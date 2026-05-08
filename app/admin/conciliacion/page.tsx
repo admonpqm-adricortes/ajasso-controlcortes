@@ -360,7 +360,10 @@ function agruparInternos(cierres: CierreDia[], fecha: string): InternoRow[] {
 function buildComparacion(internos: InternoRow[], externos: PreviewRow[]): ComparadoRow[] {
   const mapInterno = new Map(internos.map((r) => [normalizeText(r.sucursal), r]));
   const mapExterno = new Map(externos.map((r) => [normalizeText(r.sucursalMapeada), r]));
-  const sucursales = Array.from(new Set([...mapInterno.keys(), ...mapExterno.keys()])).sort();
+  const keysInterno = Array.from(mapInterno.keys());
+  const keysExterno = Array.from(mapExterno.keys());
+  const sucursales = Array.from(new Set(keysInterno.concat(keysExterno))).sort();
+  
 
   return sucursales.map((key) => {
     const interno = mapInterno.get(key) || null;
