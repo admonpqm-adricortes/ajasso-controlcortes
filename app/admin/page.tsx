@@ -1,11 +1,30 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sincronizarDesdeFirebase } from "../../lib/storage";
 
+type Session = {
+  username: string;
+  email: string;
+  role: "ADMIN" | "SUCURSAL";
+  localId: string;
+  loginAt: string;
+  expiresAt: string;
+};
+
+function cerrarSesion(router: ReturnType<typeof useRouter>) {
+  localStorage.removeItem("session");
+  localStorage.removeItem("firebaseToken");
+  localStorage.removeItem("firebaseRefreshToken");
+
+  router.replace("/acceso");
+}
+
 export default function AdminPage() {
   const router = useRouter();
+
+  const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem("session");
@@ -15,15 +34,38 @@ export default function AdminPage() {
       return;
     }
 
-    const s = JSON.parse(raw);
+    try {
+      const s = JSON.parse(raw) as Session;
 
-    if (s.role !== "ADMIN") {
-      router.replace("/sucursal");
-      return;
+      if (s.role !== "ADMIN") {
+        router.replace("/sucursal");
+        return;
+      }
+
+      if (!s.expiresAt) {
+        cerrarSesion(router);
+        return;
+      }
+
+      const expired = Date.now() > new Date(s.expiresAt).getTime();
+
+      if (expired) {
+        cerrarSesion(router);
+        return;
+      }
+
+      setSession(s);
+
+      sincronizarDesdeFirebase().catch(console.error);
+    } catch (e) {
+      console.error(e);
+      cerrarSesion(router);
     }
-
-    sincronizarDesdeFirebase().catch(console.error);
   }, [router]);
+
+  if (!session) {
+    return null;
+  }
 
   return (
     <main
@@ -48,7 +90,13 @@ export default function AdminPage() {
         <h1 style={{ margin: 0 }}>Panel ADMIN</h1>
 
         <p style={{ marginTop: 8, color: "#555" }}>
-          Bienvenido AJASSO 👋
+          Bienvenido {session.username} 👋
+        </p>
+
+        <p style={{ marginTop: 4, color: "#888", fontSize: 13 }}>
+          Sesión válida hasta:
+          {" "}
+          {new Date(session.expiresAt).toLocaleString()}
         </p>
 
         <div
@@ -73,10 +121,7 @@ export default function AdminPage() {
           </button>
 
           <button
-            onClick={() => {
-              localStorage.removeItem("session");
-              router.replace("/acceso");
-            }}
+            onClick={() => cerrarSesion(router)}
             style={{
               ...btn,
               background: "#fee2e2",
@@ -98,4 +143,4 @@ const btn: React.CSSProperties = {
   background: "white",
   fontWeight: 800,
   cursor: "pointer",
-};
+};  

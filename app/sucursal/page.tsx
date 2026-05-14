@@ -6,11 +6,24 @@ import { sincronizarDesdeFirebase } from "../../lib/storage";
 
 type Session = {
   username: string;
+  email: string;
   role: "ADMIN" | "SUCURSAL";
+  localId: string;
+  loginAt: string;
+  expiresAt: string;
 };
+
+function cerrarSesion(router: ReturnType<typeof useRouter>) {
+  localStorage.removeItem("session");
+  localStorage.removeItem("firebaseToken");
+  localStorage.removeItem("firebaseRefreshToken");
+
+  router.replace("/acceso");
+}
 
 export default function SucursalPage() {
   const router = useRouter();
+
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
@@ -21,17 +34,38 @@ export default function SucursalPage() {
       return;
     }
 
-    const s = JSON.parse(raw) as Session;
+    try {
+      const s = JSON.parse(raw) as Session;
 
-    if (s.role !== "SUCURSAL") {
-      router.replace("/admin");
-      return;
+      if (s.role !== "SUCURSAL") {
+        router.replace("/admin");
+        return;
+      }
+
+      if (!s.expiresAt) {
+        cerrarSesion(router);
+        return;
+      }
+
+      const expired = Date.now() > new Date(s.expiresAt).getTime();
+
+      if (expired) {
+        cerrarSesion(router);
+        return;
+      }
+
+      sincronizarDesdeFirebase().catch(console.error);
+
+      setSession(s);
+    } catch (e) {
+      console.error(e);
+      cerrarSesion(router);
     }
-
-    sincronizarDesdeFirebase().catch(console.error);
-
-    setSession(s);
   }, [router]);
+
+  if (!session) {
+    return null;
+  }
 
   return (
     <main
@@ -55,7 +89,13 @@ export default function SucursalPage() {
         <h1 style={{ marginTop: 0 }}>Panel de sucursal</h1>
 
         <p style={{ color: "#555" }}>
-          Usuario: <b>{session?.username || "—"}</b>
+          Usuario: <b>{session.username}</b>
+        </p>
+
+        <p style={{ marginTop: 4, color: "#888", fontSize: 13 }}>
+          Sesión válida hasta:
+          {" "}
+          {new Date(session.expiresAt).toLocaleString()}
         </p>
 
         <div
@@ -81,10 +121,7 @@ export default function SucursalPage() {
           </button>
 
           <button
-            onClick={() => {
-              localStorage.removeItem("session");
-              router.replace("/acceso");
-            }}
+            onClick={() => cerrarSesion(router)}
             style={{
               ...btn,
               background: "#fff1f2",
@@ -106,4 +143,4 @@ const btn: React.CSSProperties = {
   background: "white",
   cursor: "pointer",
   fontWeight: 700,
-};
+}; 

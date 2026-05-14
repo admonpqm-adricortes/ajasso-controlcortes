@@ -8,6 +8,9 @@ type Session = {
   username: string;
   email: string;
   role: "ADMIN" | "SUCURSAL";
+  localId: string;
+  loginAt: string;
+  expiresAt: string;
 };
 
 function roleFromEmail(email: string): Session["role"] {
@@ -26,6 +29,30 @@ function usernameFromEmail(email: string) {
   if (e === "medmat@ajasso.com") return "MEDMAT";
 
   return email;
+}
+
+function mensajeAmigable(error: string) {
+  if (error.includes("INVALID_LOGIN_CREDENTIALS")) {
+    return "Correo o contraseña incorrectos";
+  }
+
+  if (error.includes("EMAIL_NOT_FOUND")) {
+    return "El correo no está registrado";
+  }
+
+  if (error.includes("INVALID_PASSWORD")) {
+    return "La contraseña es incorrecta";
+  }
+
+  if (error.includes("USER_DISABLED")) {
+    return "Este usuario está deshabilitado";
+  }
+
+  if (error.includes("TOO_MANY_ATTEMPTS_TRY_LATER")) {
+    return "Demasiados intentos. Intenta más tarde";
+  }
+
+  return "No se pudo iniciar sesión";
 }
 
 async function loginFirebase(email: string, password: string) {
@@ -53,7 +80,9 @@ async function loginFirebase(email: string, password: string) {
   return data as {
     email: string;
     idToken: string;
+    refreshToken: string;
     localId: string;
+    expiresIn: string;
   };
 }
 
@@ -75,19 +104,30 @@ export default function AccesoPage() {
       const cleanEmail = email.trim().toLowerCase();
       const cleanPassword = password.trim();
 
+      if (!cleanEmail || !cleanPassword) {
+        throw new Error("Ingresa correo y contraseña");
+      }
+
       const user = await loginFirebase(cleanEmail, cleanPassword);
 
       const role = roleFromEmail(user.email);
       const username = usernameFromEmail(user.email);
 
+      const now = Date.now();
+      const expiresInMs = Number(user.expiresIn || 3600) * 1000;
+
       const session: Session = {
         username,
         email: user.email,
         role,
+        localId: user.localId,
+        loginAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + expiresInMs).toISOString(),
       };
 
       localStorage.setItem("session", JSON.stringify(session));
       localStorage.setItem("firebaseToken", user.idToken);
+      localStorage.setItem("firebaseRefreshToken", user.refreshToken);
 
       if (role === "ADMIN") {
         router.replace("/admin");
@@ -97,7 +137,7 @@ export default function AccesoPage() {
       router.replace("/sucursal");
     } catch (e: any) {
       console.error(e);
-      setMsg(e?.message || "Correo o contraseña incorrectos");
+      setMsg(mensajeAmigable(e?.message || ""));
     } finally {
       setLoading(false);
     }
@@ -139,6 +179,7 @@ export default function AccesoPage() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="admin@ajasso.com"
             type="email"
+            autoComplete="email"
             style={{
               padding: 12,
               borderRadius: 10,
@@ -152,6 +193,7 @@ export default function AccesoPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Contraseña"
             type="password"
+            autoComplete="current-password"
             style={{
               padding: 12,
               borderRadius: 10,
@@ -181,4 +223,4 @@ export default function AccesoPage() {
       </div>
     </main>
   );
-}  
+} 
