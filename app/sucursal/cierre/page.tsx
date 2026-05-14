@@ -353,8 +353,8 @@ export default function CierreSucursalPage() {
 
         setGuardando(true);
 
-        crearCierre({
-          sucursalId: sucursal,
+        await crearCierre({
+          sucursalId: sucursal, 
           fecha: fechaYMD,
           bolsaFinal: Number(bolsaFinal || 0),
           denominaciones: capturarDenoms ? denoms : undefined,
@@ -785,4 +785,4 @@ const errorBox: React.CSSProperties = {
   border: "1px solid #ffb3b3",
   padding: 12,
   borderRadius: 12,
-};
+}; 
