@@ -90,16 +90,13 @@ export function getCortes(): Corte[] {
   return read<Corte[]>(CORTES_KEY, []);
 }
 
-export function saveCorte(corte: Corte) {
+export async function saveCorte(corte: Corte) {
   const all = getCortes();
   all.push(corte);
   write(CORTES_KEY, all);
 
   const payload = removeUndefinedDeep(corte);
-
-  setDoc(doc(db, "cortes", corte.id), payload).catch((e) =>
-    console.error("Error guardando corte en Firebase:", e)
-  );
+  await setDoc(doc(db, "cortes", corte.id), payload);
 }
 
 export function getCortesPendientes(
@@ -140,16 +137,13 @@ export function getCierres(): CierreDia[] {
   return read<CierreDia[]>(CIERRES_KEY, []);
 }
 
-export function saveCierre(cierre: CierreDia) {
+export async function saveCierre(cierre: CierreDia) {
   const all = getCierres();
   all.unshift(cierre);
   write(CIERRES_KEY, all);
 
   const payload = removeUndefinedDeep(cierre);
-
-  setDoc(doc(db, "cierres", cierre.id), payload).catch((e) =>
-    console.error("Error guardando cierre en Firebase:", e)
-  );
+  await setDoc(doc(db, "cierres", cierre.id), payload);
 }
 
 export function existeCierre(sucursalId: string, fecha: string) {
@@ -242,7 +236,7 @@ export function totalMetodos(m: MetodosPago) {
    Crear cierre
 ========================= */
 
-export function crearCierre(input: {
+export async function crearCierre(input: {
   sucursalId: string;
   fecha: string;
   bolsaFinal: number;
@@ -364,7 +358,7 @@ export function crearCierre(input: {
     saldoSobranteActual,
   };
 
-  saveCierre(cierre);
+  await saveCierre(cierre);
 
   if (cortesIds.length > 0) {
     cerrarCortes(cortesIds);
@@ -414,4 +408,4 @@ export async function sincronizarDesdeFirebase() {
       cortes: getCortes(),
     };
   }
-}
+} 
