@@ -2,36 +2,105 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { firebaseConfig } from "../../lib/firebase";
 
-type Session = { username: string; role: "ADMIN" | "SUCURSAL" };
+type Session = {
+  username: string;
+  email: string;
+  role: "ADMIN" | "SUCURSAL";
+};
+
+function roleFromEmail(email: string): Session["role"] {
+  const e = email.trim().toLowerCase();
+
+  if (e === "admin@ajasso.com") return "ADMIN";
+  if (e === "medmat@ajasso.com") return "SUCURSAL";
+
+  throw new Error("Usuario sin rol asignado");
+}
+
+function usernameFromEmail(email: string) {
+  const e = email.trim().toLowerCase();
+
+  if (e === "admin@ajasso.com") return "AJASSO";
+  if (e === "medmat@ajasso.com") return "MEDMAT";
+
+  return email;
+}
+
+async function loginFirebase(email: string, password: string) {
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseConfig.apiKey}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      password,
+      returnSecureToken: true,
+    }),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    console.error("ERROR FIREBASE LOGIN:", data);
+    throw new Error(data?.error?.message || "Login inválido");
+  }
+
+  return data as {
+    email: string;
+    idToken: string;
+    localId: string;
+  };
+}
 
 export default function AccesoPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [msg, setMsg] = useState<string>("");
 
-  const onSubmit = (e: React.FormEvent) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const u = username.trim().toUpperCase();
-    const p = password.trim();
+    try {
+      setMsg("");
+      setLoading(true);
 
-    if (u === "AJASSO" && p === "1234") {
-      const session: Session = { username: u, role: "ADMIN" };
-      localStorage.setItem("session", JSON.stringify(session));
-      router.replace("/admin");
-      return;
-    }
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPassword = password.trim();
 
-    if (u === "MEDMAT" && p === "1234") {
-      const session: Session = { username: u, role: "SUCURSAL" };
+      const user = await loginFirebase(cleanEmail, cleanPassword);
+
+      const role = roleFromEmail(user.email);
+      const username = usernameFromEmail(user.email);
+
+      const session: Session = {
+        username,
+        email: user.email,
+        role,
+      };
+
       localStorage.setItem("session", JSON.stringify(session));
+      localStorage.setItem("firebaseToken", user.idToken);
+
+      if (role === "ADMIN") {
+        router.replace("/admin");
+        return;
+      }
+
       router.replace("/sucursal");
-      return;
+    } catch (e: any) {
+      console.error(e);
+      setMsg(e?.message || "Correo o contraseña incorrectos");
+    } finally {
+      setLoading(false);
     }
-
-    setMsg("Usuario o contraseña incorrectos");
   };
 
   return (
@@ -41,6 +110,7 @@ export default function AccesoPage() {
         display: "grid",
         placeItems: "center",
         padding: 24,
+        background: "#f6f7fb",
       }}
     >
       <div
@@ -56,18 +126,19 @@ export default function AccesoPage() {
         <h1 style={{ margin: 0 }}>Acceso</h1>
 
         <p style={{ marginTop: 8, color: "#555" }}>
-          Demo: <b>AJASSO / 1234</b> (Admin) — <b>MEDMAT / 1234</b> (Sucursal)
+          Ingresa con tu correo y contraseña autorizados.
         </p>
 
         <form
           onSubmit={onSubmit}
           style={{ display: "grid", gap: 12, marginTop: 16 }}
         >
-          <label style={{ fontWeight: 700 }}>Usuario</label>
+          <label style={{ fontWeight: 700 }}>Correo</label>
           <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="AJASSO o MEDMAT"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="admin@ajasso.com"
+            type="email"
             style={{
               padding: 12,
               borderRadius: 10,
@@ -79,7 +150,7 @@ export default function AccesoPage() {
           <input
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="1234"
+            placeholder="Contraseña"
             type="password"
             style={{
               padding: 12,
@@ -90,18 +161,19 @@ export default function AccesoPage() {
 
           <button
             type="submit"
+            disabled={loading}
             style={{
               marginTop: 8,
               padding: 12,
               borderRadius: 10,
               border: "1px solid #111",
-              background: "#111827",
+              background: loading ? "#6b7280" : "#111827",
               color: "white",
               fontWeight: 800,
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
             }}
           >
-            Entrar
+            {loading ? "Ingresando..." : "Entrar"}
           </button>
 
           {msg ? <p style={{ color: "crimson", margin: 0 }}>{msg}</p> : null}
@@ -109,4 +181,4 @@ export default function AccesoPage() {
       </div>
     </main>
   );
-}
+}  
