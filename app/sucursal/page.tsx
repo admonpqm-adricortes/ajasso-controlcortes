@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sincronizarDesdeFirebase } from "../../lib/storage";
 
+type Role = "ADMIN" | "SUPERVISOR" | "SUCURSAL";
+
 type Session = {
   username: string;
   email: string;
-  role: "ADMIN" | "SUCURSAL";
+  role: Role;
+  sucursalId?: string;
   localId: string;
   loginAt: string;
   expiresAt: string;
@@ -23,7 +26,6 @@ function cerrarSesion(router: ReturnType<typeof useRouter>) {
 
 export default function SucursalPage() {
   const router = useRouter();
-
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
@@ -42,6 +44,11 @@ export default function SucursalPage() {
         return;
       }
 
+      if (!s.sucursalId) {
+        cerrarSesion(router);
+        return;
+      }
+
       if (!s.expiresAt) {
         cerrarSesion(router);
         return;
@@ -55,7 +62,6 @@ export default function SucursalPage() {
       }
 
       sincronizarDesdeFirebase().catch(console.error);
-
       setSession(s);
     } catch (e) {
       console.error(e);
@@ -63,9 +69,7 @@ export default function SucursalPage() {
     }
   }, [router]);
 
-  if (!session) {
-    return null;
-  }
+  if (!session) return null;
 
   return (
     <main
@@ -92,10 +96,12 @@ export default function SucursalPage() {
           Usuario: <b>{session.username}</b>
         </p>
 
+        <p style={{ color: "#555" }}>
+          Sucursal asignada: <b>{session.sucursalId}</b>
+        </p>
+
         <p style={{ marginTop: 4, color: "#888", fontSize: 13 }}>
-          Sesión válida hasta:
-          {" "}
-          {new Date(session.expiresAt).toLocaleString()}
+          Sesión válida hasta: {new Date(session.expiresAt).toLocaleString()}
         </p>
 
         <div
@@ -106,17 +112,11 @@ export default function SucursalPage() {
             marginTop: 20,
           }}
         >
-          <button
-            onClick={() => router.push("/sucursal/nuevo")}
-            style={btn}
-          >
+          <button onClick={() => router.push("/sucursal/nuevo")} style={btn}>
             Nuevo corte
           </button>
 
-          <button
-            onClick={() => router.push("/sucursal/cierre")}
-            style={btn}
-          >
+          <button onClick={() => router.push("/sucursal/cierre")} style={btn}>
             Cierre del día
           </button>
 
@@ -143,4 +143,4 @@ const btn: React.CSSProperties = {
   background: "white",
   cursor: "pointer",
   fontWeight: 700,
-}; 
+};
