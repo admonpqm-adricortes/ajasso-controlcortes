@@ -4,31 +4,50 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { firebaseConfig } from "../../lib/firebase";
 
+type Role = "ADMIN" | "SUPERVISOR" | "SUCURSAL";
+
 type Session = {
   username: string;
   email: string;
-  role: "ADMIN" | "SUCURSAL";
+  role: Role;
+  sucursalId?: string;
   localId: string;
   loginAt: string;
   expiresAt: string;
 };
 
-function roleFromEmail(email: string): Session["role"] {
+function configFromEmail(email: string): {
+  username: string;
+  role: Role;
+  sucursalId?: string;
+} {
   const e = email.trim().toLowerCase();
 
-  if (e === "admin@ajasso.com") return "ADMIN";
-  if (e === "medmat@ajasso.com") return "SUCURSAL";
+  if (e === "ingresos@proquimed.com.mx") {
+    return { username: "AJASSO", role: "ADMIN" };
+  }
+
+  if (e === "tesoreria@proquimed.com.mx") {
+    return { username: "TESORERIA", role: "SUPERVISOR" };
+  }
+
+  if (e === "sucursal.mc@proquimed.com.mx") {
+    return {
+      username: "MEDICA CAMPESTRE",
+      role: "SUCURSAL",
+      sucursalId: "M-MEDICA CAMPESTRE",
+    };
+  }
+
+  if (e === "sucursal.puntadeleste@proquimed.com.mx") {
+    return {
+      username: "PUNTA DEL ESTE",
+      role: "SUCURSAL",
+      sucursalId: "P-PUNTA DEL ESTE",
+    };
+  }
 
   throw new Error("Usuario sin rol asignado");
-}
-
-function usernameFromEmail(email: string) {
-  const e = email.trim().toLowerCase();
-
-  if (e === "admin@ajasso.com") return "AJASSO";
-  if (e === "medmat@ajasso.com") return "MEDMAT";
-
-  return email;
 }
 
 function mensajeAmigable(error: string) {
@@ -50,6 +69,10 @@ function mensajeAmigable(error: string) {
 
   if (error.includes("TOO_MANY_ATTEMPTS_TRY_LATER")) {
     return "Demasiados intentos. Intenta más tarde";
+  }
+
+  if (error.includes("Usuario sin rol asignado")) {
+    return "Este usuario no tiene permisos asignados";
   }
 
   return "No se pudo iniciar sesión";
@@ -109,17 +132,16 @@ export default function AccesoPage() {
       }
 
       const user = await loginFirebase(cleanEmail, cleanPassword);
-
-      const role = roleFromEmail(user.email);
-      const username = usernameFromEmail(user.email);
+      const userConfig = configFromEmail(user.email);
 
       const now = Date.now();
       const expiresInMs = Number(user.expiresIn || 3600) * 1000;
 
       const session: Session = {
-        username,
+        username: userConfig.username,
         email: user.email,
-        role,
+        role: userConfig.role,
+        sucursalId: userConfig.sucursalId,
         localId: user.localId,
         loginAt: new Date(now).toISOString(),
         expiresAt: new Date(now + expiresInMs).toISOString(),
@@ -129,7 +151,7 @@ export default function AccesoPage() {
       localStorage.setItem("firebaseToken", user.idToken);
       localStorage.setItem("firebaseRefreshToken", user.refreshToken);
 
-      if (role === "ADMIN") {
+      if (session.role === "ADMIN" || session.role === "SUPERVISOR") {
         router.replace("/admin");
         return;
       }
@@ -166,7 +188,7 @@ export default function AccesoPage() {
         <h1 style={{ margin: 0 }}>Acceso</h1>
 
         <p style={{ marginTop: 8, color: "#555" }}>
-          Ingresa con tu correo y contraseña autorizados.
+          Ingresa con tu correo institucional y contraseña.
         </p>
 
         <form
@@ -177,7 +199,7 @@ export default function AccesoPage() {
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@ajasso.com"
+            placeholder="usuario@proquimed.com.mx"
             type="email"
             autoComplete="email"
             style={{
@@ -223,4 +245,4 @@ export default function AccesoPage() {
       </div>
     </main>
   );
-} 
+}
