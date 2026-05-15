@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sincronizarDesdeFirebase } from "../../lib/storage";
 
+type Role = "ADMIN" | "SUPERVISOR" | "SUCURSAL";
+
 type Session = {
   username: string;
   email: string;
-  role: "ADMIN" | "SUCURSAL";
+  role: Role;
+  sucursalId?: string;
   localId: string;
   loginAt: string;
   expiresAt: string;
@@ -23,7 +26,6 @@ function cerrarSesion(router: ReturnType<typeof useRouter>) {
 
 export default function AdminPage() {
   const router = useRouter();
-
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export default function AdminPage() {
     try {
       const s = JSON.parse(raw) as Session;
 
-      if (s.role !== "ADMIN") {
+      if (s.role !== "ADMIN" && s.role !== "SUPERVISOR") {
         router.replace("/sucursal");
         return;
       }
@@ -55,7 +57,6 @@ export default function AdminPage() {
       }
 
       setSession(s);
-
       sincronizarDesdeFirebase().catch(console.error);
     } catch (e) {
       console.error(e);
@@ -63,9 +64,9 @@ export default function AdminPage() {
     }
   }, [router]);
 
-  if (!session) {
-    return null;
-  }
+  if (!session) return null;
+
+  const esSupervisor = session.role === "SUPERVISOR";
 
   return (
     <main
@@ -87,17 +88,37 @@ export default function AdminPage() {
           border: "1px solid #eee",
         }}
       >
-        <h1 style={{ margin: 0 }}>Panel ADMIN</h1>
+        <h1 style={{ margin: 0 }}>
+          {esSupervisor ? "Panel SUPERVISOR" : "Panel ADMIN"}
+        </h1>
 
         <p style={{ marginTop: 8, color: "#555" }}>
           Bienvenido {session.username} 👋
         </p>
 
         <p style={{ marginTop: 4, color: "#888", fontSize: 13 }}>
-          Sesión válida hasta:
-          {" "}
-          {new Date(session.expiresAt).toLocaleString()}
+          Rol: <b>{session.role}</b>
         </p>
+
+        <p style={{ marginTop: 4, color: "#888", fontSize: 13 }}>
+          Sesión válida hasta: {new Date(session.expiresAt).toLocaleString()}
+        </p>
+
+        {esSupervisor ? (
+          <div
+            style={{
+              marginTop: 16,
+              padding: 12,
+              borderRadius: 12,
+              background: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              color: "#1e3a8a",
+              fontSize: 14,
+            }}
+          >
+            Modo supervisión: acceso de consulta y revisión.
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -106,10 +127,7 @@ export default function AdminPage() {
             marginTop: 20,
           }}
         >
-          <button
-            onClick={() => router.push("/admin/cierres")}
-            style={btn}
-          >
+          <button onClick={() => router.push("/admin/cierres")} style={btn}>
             📊 Ver cierres
           </button>
 
@@ -143,4 +161,4 @@ const btn: React.CSSProperties = {
   background: "white",
   fontWeight: 800,
   cursor: "pointer",
-};  
+};
