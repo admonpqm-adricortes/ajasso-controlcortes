@@ -110,4 +110,4 @@ export async function restGetCollection<T>(collection: string): Promise<T[]> {
   return (json.documents || []).map((doc: any) =>
     fromFirestoreFields(doc.fields || {})
   ) as T[];
-} 
+}  

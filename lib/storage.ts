@@ -406,4 +406,4 @@ export async function sincronizarDesdeFirebase() {
       cortes: getCortes(),
     };
   }
-} 
+}
