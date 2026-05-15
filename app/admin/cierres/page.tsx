@@ -92,7 +92,7 @@ export default function AdminCierresPage() {
 
     const s = JSON.parse(raw);
 
-    if (s?.role !== "ADMIN") {
+    if (s?.role !== "ADMIN" && s?.role !== "SUPERVISOR") {
       router.replace("/sucursal");
       return;
     }
