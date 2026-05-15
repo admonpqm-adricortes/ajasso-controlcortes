@@ -4,7 +4,9 @@ const BASE_URL = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.
 
 function getToken() {
   const token = localStorage.getItem("firebaseToken");
-  if (!token) throw new Error("Sesión Firebase no válida. Vuelve a iniciar sesión.");
+  if (!token) {
+    throw new Error("Sesión Firebase no válida. Vuelve a iniciar sesión.");
+  }
   return token;
 }
 
@@ -12,25 +14,29 @@ function toFirestoreValue(value: any): any {
   if (value === null) return { nullValue: null };
   if (typeof value === "string") return { stringValue: value };
   if (typeof value === "boolean") return { booleanValue: value };
+
   if (typeof value === "number") {
     return Number.isInteger(value)
       ? { integerValue: value }
       : { doubleValue: value };
   }
+
   if (Array.isArray(value)) {
-    return { arrayValue: { values: value.map(toFirestoreValue) } };
-  }
-  if (typeof value === "object") {
     return {
-      mapValue: {
-        fields: Object.fromEntries(
-          Object.entries(value)
-            .filter(([, v]) => v !== undefined)
-            .map(([k, v]) => [k, toFirestoreValue(v)])
-        ),
+      arrayValue: {
+        values: value.map(toFirestoreValue),
       },
     };
   }
+
+  if (typeof value === "object") {
+    return {
+      mapValue: {
+        fields: toFirestoreFields(value),
+      },
+    };
+  }
+
   return { stringValue: String(value) };
 }
 
@@ -54,7 +60,7 @@ function fromFirestoreValue(value: any): any {
 
 function toFirestoreFields(data: any) {
   return Object.fromEntries(
-    Object.entries(data)
+    Object.entries(data || {})
       .filter(([, v]) => v !== undefined)
       .map(([k, v]) => [k, toFirestoreValue(v)])
   );
@@ -87,7 +93,31 @@ export async function restSetDoc(collection: string, id: string, data: any) {
 }
 
 export async function restUpdateDoc(collection: string, id: string, data: any) {
-  return restSetDoc(collection, id, data);
+  const token = getToken();
+
+  const cleanData = Object.fromEntries(
+    Object.entries(data || {}).filter(([, v]) => v !== undefined)
+  );
+
+  const updateMask = Object.keys(cleanData)
+    .map((key) => `updateMask.fieldPaths=${encodeURIComponent(key)}`)
+    .join("&");
+
+  const res = await fetch(`${BASE_URL}/${collection}/${id}?${updateMask}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      fields: toFirestoreFields(cleanData),
+    }),
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`Firebase no permitió actualizar: ${error}`);
+  }
 }
 
 export async function restGetCollection<T>(collection: string): Promise<T[]> {
@@ -110,4 +140,4 @@ export async function restGetCollection<T>(collection: string): Promise<T[]> {
   return (json.documents || []).map((doc: any) =>
     fromFirestoreFields(doc.fields || {})
   ) as T[];
-}  
+}
