@@ -1,18 +1,15 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  setDoc,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "./firebase";
-
 import type {
   CierreDia,
   Corte,
   DenominacionesMXN,
   MetodosPago,
 } from "./types";
+
+import {
+  restGetCollection,
+  restSetDoc,
+  restUpdateDoc,
+} from "./firestoreRest";
 
 /* =========================
    Helpers
@@ -42,10 +39,12 @@ function removeUndefinedDeep<T>(value: T): T {
 
   if (value && typeof value === "object") {
     const out: Record<string, any> = {};
+
     for (const [k, v] of Object.entries(value as Record<string, any>)) {
       if (v === undefined) continue;
       out[k] = removeUndefinedDeep(v);
     }
+
     return out as T;
   }
 
@@ -96,7 +95,7 @@ export async function saveCorte(corte: Corte) {
   write(CORTES_KEY, all);
 
   const payload = removeUndefinedDeep(corte);
-  await setDoc(doc(db, "cortes", corte.id), payload);
+  await restSetDoc("cortes", corte.id, payload);
 }
 
 export function getCortesPendientes(
@@ -121,7 +120,7 @@ export function cerrarCortes(ids: string[]) {
   write(CORTES_KEY, updated);
 
   ids.forEach((id) => {
-    updateDoc(doc(db, "cortes", id), { status: "CERRADO" }).catch((e) =>
+    restUpdateDoc("cortes", id, { status: "CERRADO" }).catch((e) =>
       console.error("Error cerrando corte en Firebase:", e)
     );
   });
@@ -143,7 +142,7 @@ export async function saveCierre(cierre: CierreDia) {
   write(CIERRES_KEY, all);
 
   const payload = removeUndefinedDeep(cierre);
-  await setDoc(doc(db, "cierres", cierre.id), payload);
+  await restSetDoc("cierres", cierre.id, payload);
 }
 
 export function existeCierre(sucursalId: string, fecha: string) {
@@ -163,7 +162,7 @@ export function updateCierre(cierreId: string, patch: Partial<CierreDia>) {
 
   const payload = removeUndefinedDeep(patch);
 
-  updateDoc(doc(db, "cierres", cierreId), payload).catch((e) =>
+  restUpdateDoc("cierres", cierreId, payload).catch((e) =>
     console.error("Error actualizando cierre en Firebase:", e)
   );
 
@@ -284,11 +283,13 @@ export async function crearCierre(input: {
   const totalEsperado = totalMetodos(totalesPorMetodo);
 
   const bolsaFinal = Number(input.bolsaFinal ?? 0);
+
   if (!Number.isFinite(bolsaFinal) || bolsaFinal < 0) {
     throw new Error("Bolsa final inválida");
   }
 
   const efectivoEsperado = Number(totalesPorMetodo.efectivo ?? 0);
+
   const saldoSobranteAnterior = Number(
     input.saldoSobranteAnterior ?? getSaldoSobranteSucursal(input.sucursalId)
   );
@@ -373,11 +374,8 @@ export async function crearCierre(input: {
 
 export async function sincronizarDesdeFirebase() {
   try {
-    const cierresSnap = await getDocs(collection(db, "cierres"));
-    const cortesSnap = await getDocs(collection(db, "cortes"));
-
-    const cierres = cierresSnap.docs.map((d) => d.data() as CierreDia);
-    const cortes = cortesSnap.docs.map((d) => d.data() as Corte);
+    const cierres = await restGetCollection<CierreDia>("cierres");
+    const cortes = await restGetCollection<Corte>("cortes");
 
     cierres.sort((a, b) => {
       const keyA = `${a.fecha}|${a.createdAt}`;
@@ -394,14 +392,14 @@ export async function sincronizarDesdeFirebase() {
     write(CIERRES_KEY, cierres);
     write(CORTES_KEY, cortes);
 
-    console.log("✅ Sincronización Firebase completada", {
+    console.log("✅ Sincronización Firebase REST completada", {
       cierres: cierres.length,
       cortes: cortes.length,
     });
 
     return { cierres, cortes };
   } catch (e) {
-    console.error("❌ Error sincronizando Firebase:", e);
+    console.error("❌ Error sincronizando Firebase REST:", e);
 
     return {
       cierres: getCierres(),
