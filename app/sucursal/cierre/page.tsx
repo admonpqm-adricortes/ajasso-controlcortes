@@ -42,6 +42,7 @@ type TotalesPDF = {
 type Session = {
   username?: string;
   role?: string;
+  sucursalId?: string;
 };
 
 async function ensurePdfJs() {
@@ -144,6 +145,8 @@ export default function CierreSucursalPage() {
   const router = useRouter();
 
   const [session, setSession] = useState<Session>({});
+  const [sucursal, setSucursal] = useState<string>("");
+
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const [pdfName, setPdfName] = useState("");
@@ -153,13 +156,6 @@ export default function CierreSucursalPage() {
   const [voucherFile, setVoucherFile] = useState<File | null>(null);
   const [voucherName, setVoucherName] = useState("");
   const [voucherPreview, setVoucherPreview] = useState("");
-
-  const sucursales = useMemo(
-    () => ["M-MEDICA CAMPESTRE", "P-PUNTA DEL ESTE"],
-    []
-  );
-
-  const [sucursal, setSucursal] = useState<string>(sucursales[0]);
 
   const [fechaYMD, setFechaYMD] = useState<string>(() => {
     const d = new Date();
@@ -202,17 +198,27 @@ export default function CierreSucursalPage() {
 
   useEffect(() => {
     try {
-      const s = localStorage.getItem("session");
-      if (s) {
-        const parsed = JSON.parse(s);
-        setSession(parsed);
+      const raw = localStorage.getItem("session");
 
-        if (parsed?.role !== "SUCURSAL") {
-          router.replace("/acceso");
-        }
-      } else {
+      if (!raw) {
         router.replace("/acceso");
+        return;
       }
+
+      const parsed = JSON.parse(raw) as Session;
+
+      if (parsed?.role !== "SUCURSAL") {
+        router.replace("/acceso");
+        return;
+      }
+
+      if (!parsed?.sucursalId) {
+        router.replace("/acceso");
+        return;
+      }
+
+      setSession(parsed);
+      setSucursal(parsed.sucursalId);
     } catch {
       router.replace("/acceso");
     }
@@ -220,6 +226,8 @@ export default function CierreSucursalPage() {
 
   function recargar() {
     try {
+      if (!sucursal) return;
+
       setPdfError("");
       const pendientes = getCortesPendientes(sucursal, fechaYMD);
       setCortesPendientes(pendientes || []);
@@ -313,23 +321,31 @@ export default function CierreSucursalPage() {
     } as MetodosPago);
 
   const efectivoEsperado = Number(totalesPdf.efectivo || 0);
+
   const efectivoNetoAEnviar = Math.max(
     0,
     efectivoEsperado - saldoSobranteAnterior
   );
+
   const sobranteCorte = Math.max(
     0,
     Number(bolsaFinal || 0) - efectivoNetoAEnviar
   );
+
   const saldoSobranteProyectado = Math.max(
     0,
     saldoSobranteAnterior + Number(bolsaFinal || 0) - efectivoEsperado
   );
+
   const diferencia = Number(bolsaFinal || 0) - efectivoNetoAEnviar;
 
   function guardarCierre() {
     const run = async () => {
       try {
+        if (!sucursal) {
+          throw new Error("No hay sucursal asignada a este usuario");
+        }
+
         if (!pdfFile) {
           throw new Error("Debes subir el PDF antes de guardar");
         }
@@ -354,7 +370,7 @@ export default function CierreSucursalPage() {
         setGuardando(true);
 
         await crearCierre({
-          sucursalId: sucursal, 
+          sucursalId: sucursal,
           fecha: fechaYMD,
           bolsaFinal: Number(bolsaFinal || 0),
           denominaciones: capturarDenoms ? denoms : undefined,
@@ -434,19 +450,21 @@ export default function CierreSucursalPage() {
         >
           <div>
             <label>
-              <b>Sucursal</b>
+              <b>Sucursal asignada</b>
             </label>
-            <select
-              value={sucursal}
-              onChange={(e) => setSucursal(e.target.value)}
-              style={inputStyle}
+
+            <div
+              style={{
+                ...inputStyle,
+                background: "#f3f4f6",
+                minHeight: 42,
+                display: "flex",
+                alignItems: "center",
+                fontWeight: 800,
+              }}
             >
-              {sucursales.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+              {sucursal || "—"}
+            </div>
           </div>
 
           <div>
@@ -785,4 +803,4 @@ const errorBox: React.CSSProperties = {
   border: "1px solid #ffb3b3",
   padding: 12,
   borderRadius: 12,
-}; 
+};
