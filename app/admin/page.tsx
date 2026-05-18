@@ -67,6 +67,7 @@ export default function AdminPage() {
   if (!session) return null;
 
   const esSupervisor = session.role === "SUPERVISOR";
+  const esAdmin = session.role === "ADMIN";
 
   return (
     <main
@@ -116,7 +117,7 @@ export default function AdminPage() {
               fontSize: 14,
             }}
           >
-            Modo supervisión: acceso de consulta y revisión.
+            Modo supervisión: acceso de consulta, revisión y exportación.
           </div>
         ) : null}
 
@@ -131,12 +132,14 @@ export default function AdminPage() {
             📊 Ver cierres
           </button>
 
-          <button
-            onClick={() => router.push("/admin/conciliacion")}
-            style={btn}
-          >
-            🧾 Conciliación bancaria
-          </button>
+          {esAdmin ? (
+            <button
+              onClick={() => router.push("/admin/conciliacion")}
+              style={btn}
+            >
+              🧾 Conciliación bancaria
+            </button>
+          ) : null}
 
           <button
             onClick={() => cerrarSesion(router)}
