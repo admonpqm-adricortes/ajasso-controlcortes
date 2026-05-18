@@ -65,9 +65,11 @@ export type CierreDia = {
   voucherName?: string;
   voucherDataUrl?: string;
 
-  revisado?: boolean;
+  revisado: boolean;
   revisadoBy?: string;
   revisadoAt?: string;
+  revisadoRole?: string;
+  ultimaRevisionAt?: string;
 
   saldoSobranteAnterior?: number;
   efectivoNetoRequerido?: number;
