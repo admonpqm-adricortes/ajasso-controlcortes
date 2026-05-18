@@ -106,7 +106,8 @@ export default function AdminCierreDetallePage() {
       marcarCierreRevisado({
         cierreId: cierre.id,
         revisado,
-        username: session.username || "ADMIN",
+        username: s.username || "ADMIN",
+        role: s.role || "ADMIN",
       });
 
       cargar();

@@ -173,13 +173,26 @@ export function marcarCierreRevisado(params: {
   cierreId: string;
   revisado: boolean;
   username: string;
+  role?: string;
 }) {
   const now = new Date().toISOString();
 
   return updateCierre(params.cierreId, {
     revisado: params.revisado,
-    revisadoBy: params.revisado ? params.username : undefined,
-    revisadoAt: params.revisado ? now : undefined,
+
+    revisadoBy: params.revisado
+      ? params.username
+      : undefined,
+
+    revisadoRole: params.revisado
+      ? params.role || "ADMIN"
+      : undefined,
+
+    revisadoAt: params.revisado
+      ? now
+      : undefined,
+
+    ultimaRevisionAt: now,
   });
 }
 
