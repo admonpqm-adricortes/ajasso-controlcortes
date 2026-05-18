@@ -16,14 +16,24 @@ const money = (n: number) =>
     currency: "MXN",
   });
 
+type Session = {
+  username?: string;
+  email?: string;
+  role?: "ADMIN" | "SUPERVISOR" | "SUCURSAL";
+};
+
 export default function AdminCierreDetallePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id;
 
+  const [session, setSession] = useState<Session>({});
   const [cierre, setCierre] = useState<CierreDia | null>(null);
   const [cortes, setCortes] = useState<Corte[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const esAdmin = session.role === "ADMIN";
+  const esSupervisor = session.role === "SUPERVISOR";
 
   function cargar() {
     const raw = localStorage.getItem("session");
@@ -32,11 +42,14 @@ export default function AdminCierreDetallePage() {
       return;
     }
 
-    const s = JSON.parse(raw);
-    if (s.role !== "ADMIN") {
+    const s = JSON.parse(raw) as Session;
+
+    if (s.role !== "ADMIN" && s.role !== "SUPERVISOR") {
       router.replace("/sucursal");
       return;
     }
+
+    setSession(s);
 
     const found = getCierres().find((x) => x.id === id) ?? null;
     setCierre(found);
@@ -57,6 +70,7 @@ export default function AdminCierreDetallePage() {
 
   const denomRows = useMemo(() => {
     if (!denoms) return [];
+
     const map: [keyof DenominacionesMXN, string, number][] = [
       ["b1000", "Billete $1000", 1000],
       ["b500", "Billete $500", 500],
@@ -81,17 +95,18 @@ export default function AdminCierreDetallePage() {
   function toggleRevision(revisado: boolean) {
     if (!cierre) return;
 
+    if (!esAdmin) {
+      alert("Solo ADMIN puede modificar la revisión.");
+      return;
+    }
+
     try {
       setLoading(true);
-
-      const raw = localStorage.getItem("session");
-      if (!raw) throw new Error("No hay sesión");
-      const s = JSON.parse(raw);
 
       marcarCierreRevisado({
         cierreId: cierre.id,
         revisado,
-        username: s.username || "ADMIN",
+        username: session.username || "ADMIN",
       });
 
       cargar();
@@ -112,12 +127,10 @@ export default function AdminCierreDetallePage() {
           minHeight: "100vh",
         }}
       >
-        <button
-          onClick={() => router.push("/admin/cierres")}
-          style={btn}
-        >
+        <button onClick={() => router.push("/admin/cierres")} style={btn}>
           ← Volver a cierres
         </button>
+
         <h2 style={{ marginTop: 14 }}>No se encontró el cierre.</h2>
       </main>
     );
@@ -133,34 +146,56 @@ export default function AdminCierreDetallePage() {
       }}
     >
       <div
-        style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}
+        style={{
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
       >
-        <button
-          onClick={() => router.push("/admin/cierres")}
-          style={btn}
-        >
+        <button onClick={() => router.push("/admin/cierres")} style={btn}>
           ← Volver a cierres
         </button>
 
-        <button
-          onClick={() => toggleRevision(!cierre.revisado)}
-          disabled={loading}
-          style={{
-            ...btn,
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {cierre.revisado ? "Marcar como pendiente" : "Marcar como correcto"}
-        </button>
+        {esAdmin ? (
+          <button
+            onClick={() => toggleRevision(!cierre.revisado)}
+            disabled={loading}
+            style={{
+              ...btn,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {cierre.revisado ? "Marcar como pendiente" : "Marcar como correcto"}
+          </button>
+        ) : null}
 
         <h1 style={{ margin: 0 }}>Detalle cierre</h1>
       </div>
+
+      {esSupervisor ? (
+        <div
+          style={{
+            marginTop: 14,
+            maxWidth: 980,
+            padding: 12,
+            borderRadius: 12,
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            color: "#1e3a8a",
+            fontWeight: 700,
+          }}
+        >
+          Modo supervisor: puedes consultar este cierre, pero no modificarlo.
+        </div>
+      ) : null}
 
       <div style={{ marginTop: 16, display: "grid", gap: 12, maxWidth: 980 }}>
         <div style={card}>
           <div style={{ fontWeight: 900, fontSize: 18 }}>
             {cierre.sucursalId} — {cierre.fecha}
           </div>
+
           <div style={{ fontSize: 12, opacity: 0.75 }}>
             Cierre #{cierre.id.slice(-6)} · creado por {cierre.createdBy} ·{" "}
             {new Date(cierre.createdAt).toLocaleString("es-MX")}
@@ -180,6 +215,7 @@ export default function AdminCierreDetallePage() {
 
         <div style={card}>
           <div style={{ fontWeight: 900, marginBottom: 10 }}>Totales</div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>Efectivo: <b>{money(cierre.totalesPorMetodo.efectivo ?? 0)}</b></div>
             <div>Tarjeta: <b>{money(cierre.totalesPorMetodo.tarjeta ?? 0)}</b></div>
@@ -236,9 +272,7 @@ export default function AdminCierreDetallePage() {
           </div>
 
           {!cierre.voucherDataUrl ? (
-            <div style={emptyBox}>
-              Este cierre no capturó voucher terminal.
-            </div>
+            <div style={emptyBox}>Este cierre no capturó voucher terminal.</div>
           ) : (
             <>
               {cierre.voucherName ? (
@@ -267,9 +301,7 @@ export default function AdminCierreDetallePage() {
           </div>
 
           {!cierre.pdfDataUrl ? (
-            <div style={emptyBox}>
-              Este cierre no tiene PDF guardado.
-            </div>
+            <div style={emptyBox}>Este cierre no tiene PDF guardado.</div>
           ) : (
             <iframe
               src={cierre.pdfDataUrl}
@@ -290,9 +322,7 @@ export default function AdminCierreDetallePage() {
           </div>
 
           {!denoms ? (
-            <div style={emptyBox}>
-              Este cierre no capturó denominaciones.
-            </div>
+            <div style={emptyBox}>Este cierre no capturó denominaciones.</div>
           ) : (
             <>
               <div
