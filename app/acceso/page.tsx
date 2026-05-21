@@ -172,77 +172,145 @@ export default function AccesoPage() {
         display: "grid",
         placeItems: "center",
         padding: 24,
-        background: "#f6f7fb",
+        background:
+          "linear-gradient(135deg, #e6fffb 0%, #f5f3ff 45%, #ffffff 100%)",
       }}
     >
       <div
         style={{
           width: "100%",
-          maxWidth: 520,
-          background: "white",
-          padding: 24,
-          borderRadius: 16,
-          border: "1px solid #eee",
+          maxWidth: 560,
+          background: "rgba(255,255,255,0.94)",
+          padding: 30,
+          borderRadius: 24,
+          border: "1px solid #dbeafe",
+          boxShadow: "0 18px 45px rgba(31, 41, 55, 0.12)",
         }}
       >
-        <h1 style={{ margin: 0 }}>Acceso</h1>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <img
+            src="/logotipo-proquimed.png"
+            alt="PROQUIMED Laboratorio Clínico"
+            style={{
+              width: "100%",
+              maxWidth: 300,
+              height: "auto",
+              objectFit: "contain",
+              marginBottom: 14,
+            }}
+          />
 
-        <p style={{ marginTop: 8, color: "#555" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              padding: "6px 12px",
+              borderRadius: 999,
+              background: "#ecfeff",
+              color: "#0f766e",
+              border: "1px solid #99f6e4",
+              fontWeight: 800,
+              fontSize: 13,
+            }}
+          >
+            Sistema de control de cortes
+          </div>
+        </div>
+
+        <h1
+          style={{
+            margin: 0,
+            color: "#312e81",
+            fontSize: 34,
+            textAlign: "center",
+          }}
+        >
+          Acceso
+        </h1>
+
+        <p
+          style={{
+            marginTop: 8,
+            color: "#4b5563",
+            textAlign: "center",
+            fontSize: 16,
+          }}
+        >
           Ingresa con tu correo institucional y contraseña.
         </p>
 
         <form
           onSubmit={onSubmit}
-          style={{ display: "grid", gap: 12, marginTop: 16 }}
+          style={{ display: "grid", gap: 13, marginTop: 22 }}
         >
-          <label style={{ fontWeight: 700 }}>Correo</label>
+          <label style={{ fontWeight: 800, color: "#312e81" }}>Correo</label>
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="usuario@proquimed.com.mx"
             type="email"
             autoComplete="email"
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #ddd",
-            }}
+            style={inputStyle}
           />
 
-          <label style={{ fontWeight: 700 }}>Contraseña</label>
+          <label style={{ fontWeight: 800, color: "#312e81" }}>
+            Contraseña
+          </label>
           <input
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Contraseña"
             type="password"
             autoComplete="current-password"
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #ddd",
-            }}
+            style={inputStyle}
           />
 
           <button
             type="submit"
             disabled={loading}
             style={{
-              marginTop: 8,
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #111",
-              background: loading ? "#6b7280" : "#111827",
+              marginTop: 10,
+              padding: 14,
+              borderRadius: 14,
+              border: "none",
+              background: loading
+                ? "#94a3b8"
+                : "linear-gradient(90deg, #0d9488, #4338ca)",
               color: "white",
-              fontWeight: 800,
+              fontWeight: 900,
+              fontSize: 16,
               cursor: loading ? "not-allowed" : "pointer",
+              boxShadow: "0 10px 20px rgba(13, 148, 136, 0.22)",
             }}
           >
             {loading ? "Ingresando..." : "Entrar"}
           </button>
 
-          {msg ? <p style={{ color: "crimson", margin: 0 }}>{msg}</p> : null}
+          {msg ? (
+            <p
+              style={{
+                color: "#be123c",
+                background: "#fff1f2",
+                border: "1px solid #fecdd3",
+                padding: 10,
+                borderRadius: 12,
+                margin: 0,
+                fontWeight: 700,
+              }}
+            >
+              {msg}
+            </p>
+          ) : null}
         </form>
       </div>
     </main>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  padding: 13,
+  borderRadius: 13,
+  border: "1px solid #cbd5e1",
+  background: "#f8fafc",
+  outlineColor: "#14b8a6",
+  fontSize: 15,
+};
