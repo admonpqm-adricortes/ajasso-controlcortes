@@ -261,13 +261,21 @@ export default function AdminCierresPage() {
 
   const sobrantesPorSucursal = useMemo(() => {
     const map: Record<string, number> = {};
-
+  
     for (const c of cierres) {
+      if (!c.sucursalId) continue;
+  
       const suc = c.sucursalId;
+  
       if (map[suc] !== undefined) continue;
-      map[suc] = Number(c.saldoSobranteActual ?? c.sobranteCorte ?? 0);
+  
+      map[suc] = Number(
+        c.saldoSobranteActual ??
+        c.sobranteCorte ??
+        0
+      );
     }
-
+  
     return map;
   }, [cierres]);
 
