@@ -120,281 +120,251 @@ export default function AdminCierreDetallePage() {
 
   if (!cierre) {
     return (
-      <main
-        style={{
-          padding: 24,
-          fontFamily: "Arial",
-          background: "#f6f7fb",
-          minHeight: "100vh",
-        }}
-      >
+      <main style={pageStyle}>
         <button onClick={() => router.push("/admin/cierres")} style={btn}>
           ← Volver a cierres
         </button>
-
         <h2 style={{ marginTop: 14 }}>No se encontró el cierre.</h2>
       </main>
     );
   }
 
   return (
-    <main
-      style={{
-        padding: 24,
-        fontFamily: "Arial",
-        background: "#f6f7fb",
-        minHeight: "100vh",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <button onClick={() => router.push("/admin/cierres")} style={btn}>
-          ← Volver a cierres
-        </button>
+    <main style={pageStyle}>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+        <header style={hero}>
+          <img
+            src="/logotipo-proquimed.png"
+            alt="PROQUIMED"
+            style={{ width: 150, height: "auto" }}
+          />
 
-        {esAdmin ? (
-          <button
-            onClick={() => toggleRevision(!cierre.revisado)}
-            disabled={loading}
-            style={{
-              ...btn,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {cierre.revisado ? "Marcar como pendiente" : "Marcar como correcto"}
-          </button>
-        ) : null}
-
-        <h1 style={{ margin: 0 }}>Detalle cierre</h1>
-      </div>
-
-      {esSupervisor ? (
-        <div
-          style={{
-            marginTop: 14,
-            maxWidth: 980,
-            padding: 12,
-            borderRadius: 12,
-            background: "#eff6ff",
-            border: "1px solid #bfdbfe",
-            color: "#1e3a8a",
-            fontWeight: 700,
-          }}
-        >
-          Modo supervisor: puedes consultar este cierre, pero no modificarlo.
-        </div>
-      ) : null}
-
-      <div style={{ marginTop: 16, display: "grid", gap: 12, maxWidth: 980 }}>
-        <div style={card}>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>
-            {cierre.sucursalId} — {cierre.fecha}
-          </div>
-
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
-            Cierre #{cierre.id.slice(-6)} · creado por {cierre.createdBy} ·{" "}
-            {new Date(cierre.createdAt).toLocaleString("es-MX")}
-          </div>
-
-          {cierre.pdfName ? (
-            <div style={{ marginTop: 8 }}>
-              <b>PDF:</b> {cierre.pdfName}
+          <div>
+            <div style={badge}>
+              {cierre.revisado ? "✅ Revisado" : "⏳ Pendiente"}
             </div>
-          ) : null}
 
-          <div style={{ marginTop: 8 }}>
-            <b>Estado revisión:</b>{" "}
-            {cierre.revisado ? "✅ Revisado" : "⏳ Pendiente"}
+            <h1 style={{ margin: "8px 0 4px", color: "#312e81" }}>
+              Detalle de cierre
+            </h1>
+
+            <div style={{ color: "#4b5563" }}>
+              <b>{cierre.sucursalId}</b> · {cierre.fecha} · Cierre #
+              {cierre.id.slice(-6)}
+            </div>
           </div>
-        </div>
+        </header>
 
-        <div style={card}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>Totales</div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 18 }}>
+          <button onClick={() => router.push("/admin/cierres")} style={btn}>
+            ← Volver a cierres
+          </button>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>Efectivo: <b>{money(cierre.totalesPorMetodo.efectivo ?? 0)}</b></div>
-            <div>Tarjeta: <b>{money(cierre.totalesPorMetodo.tarjeta ?? 0)}</b></div>
-            <div>Transferencia: <b>{money(cierre.totalesPorMetodo.transferencia ?? 0)}</b></div>
-            <div>Vales: <b>{money(cierre.totalesPorMetodo.vales ?? 0)}</b></div>
-            <div>Otros: <b>{money(cierre.totalesPorMetodo.otros ?? 0)}</b></div>
-            <div>Total esperado: <b>{money(cierre.totalEsperado)}</b></div>
-            <div>Bolsa final: <b>{money(cierre.bolsaFinal)}</b></div>
-            <div>Diferencia: <b>{money(cierre.diferencia)}</b></div>
-          </div>
-
-          {cierre.observaciones && (
-            <div
+          {esAdmin ? (
+            <button
+              onClick={() => toggleRevision(!cierre.revisado)}
+              disabled={loading}
               style={{
-                marginTop: 12,
-                padding: 12,
-                borderRadius: 12,
-                background: "#fafafa",
-                border: "1px solid #eee",
+                ...btn,
+                background: cierre.revisado ? "#fff7ed" : "#ecfeff",
+                border: cierre.revisado ? "1px solid #fed7aa" : "1px solid #99f6e4",
+                color: cierre.revisado ? "#9a3412" : "#0f766e",
               }}
             >
+              {cierre.revisado ? "Marcar como pendiente" : "Marcar como correcto"}
+            </button>
+          ) : null}
+        </div>
+
+        {esSupervisor ? (
+          <div style={supervisorBox}>
+            Modo supervisor: puedes consultar este cierre, pero no modificarlo.
+          </div>
+        ) : null}
+
+        <section style={gridCards}>
+          <MiniCard label="Creado por" value={cierre.createdBy || "—"} />
+          <MiniCard
+            label="Fecha de creación"
+            value={new Date(cierre.createdAt).toLocaleString("es-MX")}
+          />
+          <MiniCard label="PDF" value={cierre.pdfName || "—"} />
+          <MiniCard
+            label="Revisado por"
+            value={cierre.revisadoBy || "Pendiente"}
+          />
+        </section>
+
+        <section style={card}>
+          <h2 style={title}>Totales</h2>
+
+          <div style={totalsGrid}>
+            <Amount label="Efectivo" value={cierre.totalesPorMetodo.efectivo ?? 0} />
+            <Amount label="Tarjeta" value={cierre.totalesPorMetodo.tarjeta ?? 0} />
+            <Amount
+              label="Transferencia"
+              value={cierre.totalesPorMetodo.transferencia ?? 0}
+            />
+            <Amount label="Vales" value={cierre.totalesPorMetodo.vales ?? 0} />
+            <Amount label="Otros" value={cierre.totalesPorMetodo.otros ?? 0} />
+            <Amount label="Total esperado" value={cierre.totalEsperado} strong />
+            <Amount label="Bolsa final" value={cierre.bolsaFinal} strong />
+            <Amount label="Diferencia" value={cierre.diferencia} danger={cierre.diferencia !== 0} />
+          </div>
+
+          {cierre.observaciones ? (
+            <div style={noteBox}>
               <b>Observaciones:</b> {cierre.observaciones}
             </div>
-          )}
-        </div>
+          ) : null}
+        </section>
 
-        <div style={card}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>
-            Control de sobrantes
-          </div>
+        <section style={card}>
+          <h2 style={title}>Control de sobrantes</h2>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              Saldo sobrante anterior:{" "}
-              <b>{money(cierre.saldoSobranteAnterior ?? 0)}</b>
-            </div>
-            <div>
-              Efectivo neto requerido:{" "}
-              <b>{money(cierre.efectivoNetoRequerido ?? 0)}</b>
-            </div>
-            <div>
-              Sobrante del corte: <b>{money(cierre.sobranteCorte ?? 0)}</b>
-            </div>
-            <div>
-              Saldo sobrante actual:{" "}
-              <b>{money(cierre.saldoSobranteActual ?? 0)}</b>
-            </div>
-          </div>
-        </div>
-
-        <div style={card}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>
-            Voucher terminal
-          </div>
-
-          {!cierre.voucherDataUrl ? (
-            <div style={emptyBox}>Este cierre no capturó voucher terminal.</div>
-          ) : (
-            <>
-              {cierre.voucherName ? (
-                <div style={{ marginBottom: 10 }}>
-                  <b>Archivo:</b> {cierre.voucherName}
-                </div>
-              ) : null}
-
-              <img
-                src={cierre.voucherDataUrl}
-                alt="Voucher terminal"
-                style={{
-                  width: "100%",
-                  maxWidth: 420,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                }}
-              />
-            </>
-          )}
-        </div>
-
-        <div style={card}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>
-            Vista previa del PDF
-          </div>
-
-          {!cierre.pdfDataUrl ? (
-            <div style={emptyBox}>Este cierre no tiene PDF guardado.</div>
-          ) : (
-            <iframe
-              src={cierre.pdfDataUrl}
-              style={{
-                width: "100%",
-                height: 520,
-                border: "1px solid #ddd",
-                borderRadius: 12,
-                background: "white",
-              }}
+          <div style={totalsGrid}>
+            <Amount
+              label="Saldo sobrante anterior"
+              value={cierre.saldoSobranteAnterior ?? 0}
             />
-          )}
-        </div>
-
-        <div style={card}>
-          <div style={{ fontWeight: 900, marginBottom: 10 }}>
-            Denominaciones {denoms ? "" : "(no capturadas)"}
+            <Amount
+              label="Efectivo neto requerido"
+              value={cierre.efectivoNetoRequerido ?? 0}
+            />
+            <Amount label="Sobrante del corte" value={cierre.sobranteCorte ?? 0} />
+            <Amount
+              label="Saldo sobrante actual"
+              value={cierre.saldoSobranteActual ?? 0}
+              strong
+            />
           </div>
+        </section>
+
+        <section style={card}>
+          <h2 style={title}>Denominaciones {denoms ? "" : "(no capturadas)"}</h2>
 
           {!denoms ? (
             <div style={emptyBox}>Este cierre no capturó denominaciones.</div>
           ) : (
             <>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr",
-                  gap: 10,
-                  fontWeight: 900,
-                  opacity: 0.8,
-                }}
-              >
+              <div style={denomHeader}>
                 <div>Denominación</div>
                 <div>Cantidad</div>
                 <div>Subtotal</div>
               </div>
 
               <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                {denomRows.map((r) => (
-                  <div
-                    key={r.key}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr",
-                      gap: 10,
-                      padding: 10,
-                      borderRadius: 12,
-                      border: "1px solid #eee",
-                    }}
-                  >
-                    <div>{r.label}</div>
-                    <div>{r.qty}</div>
-                    <div style={{ fontWeight: 900 }}>{money(r.subtotal)}</div>
-                  </div>
-                ))}
+                {denomRows.map((r) => {
+                  const used = r.qty > 0;
+
+                  return (
+                    <div
+                      key={r.key}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr",
+                        gap: 10,
+                        padding: 12,
+                        borderRadius: 14,
+                        border: used ? "1px solid #99f6e4" : "1px solid #eee",
+                        background: used ? "#ecfeff" : "white",
+                      }}
+                    >
+                      <div style={{ fontWeight: used ? 900 : 500 }}>{r.label}</div>
+
+                      <div>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            minWidth: 34,
+                            justifyContent: "center",
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                            background: used ? "#0d9488" : "#f3f4f6",
+                            color: used ? "white" : "#6b7280",
+                            fontWeight: 900,
+                          }}
+                        >
+                          {r.qty}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          color: used ? "#0f766e" : "#6b7280",
+                        }}
+                      >
+                        {money(r.subtotal)}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  borderRadius: 12,
-                  background: "#fafafa",
-                  border: "1px solid #eee",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontWeight: 900,
-                }}
-              >
+              <div style={totalDenomBox}>
                 <span>Total denominaciones</span>
                 <span>{money(cierre.bolsa?.totalCalculado ?? 0)}</span>
               </div>
             </>
           )}
-        </div>
+        </section>
 
-        {cortes.length > 0 && (
+        <section style={twoColumns}>
           <div style={card}>
-            <div style={{ fontWeight: 900, marginBottom: 10 }}>
-              Cortes relacionados
-            </div>
+            <h2 style={title}>Voucher terminal</h2>
+
+            {!cierre.voucherDataUrl ? (
+              <div style={emptyBox}>Este cierre no capturó voucher terminal.</div>
+            ) : (
+              <>
+                {cierre.voucherName ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <b>Archivo:</b> {cierre.voucherName}
+                  </div>
+                ) : null}
+
+                <img
+                  src={cierre.voucherDataUrl}
+                  alt="Voucher terminal"
+                  style={{
+                    width: "100%",
+                    maxWidth: 420,
+                    borderRadius: 16,
+                    border: "1px solid #ddd",
+                  }}
+                />
+              </>
+            )}
+          </div>
+
+          <div style={card}>
+            <h2 style={title}>Vista previa del PDF</h2>
+
+            {!cierre.pdfDataUrl ? (
+              <div style={emptyBox}>Este cierre no tiene PDF guardado.</div>
+            ) : (
+              <iframe
+                src={cierre.pdfDataUrl}
+                style={{
+                  width: "100%",
+                  height: 520,
+                  border: "1px solid #ddd",
+                  borderRadius: 16,
+                  background: "white",
+                }}
+              />
+            )}
+          </div>
+        </section>
+
+        {cortes.length > 0 ? (
+          <section style={card}>
+            <h2 style={title}>Cortes relacionados</h2>
 
             <div style={{ display: "grid", gap: 8 }}>
               {cortes.map((c) => (
-                <div
-                  key={c.id}
-                  style={{
-                    border: "1px solid #eee",
-                    borderRadius: 12,
-                    padding: 10,
-                  }}
-                >
+                <div key={c.id} style={relatedCard}>
                   <div><b>Corte:</b> {c.id}</div>
                   <div><b>Fecha:</b> {c.fecha}</div>
                   <div><b>Total:</b> {money(c.total)}</div>
@@ -402,32 +372,190 @@ export default function AdminCierreDetallePage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          </section>
+        ) : null}
       </div>
     </main>
   );
 }
 
+function MiniCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={miniCard}>
+      <div style={{ color: "#64748b", fontSize: 13 }}>{label}</div>
+      <div style={{ color: "#312e81", fontWeight: 900, marginTop: 4 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Amount({
+  label,
+  value,
+  strong,
+  danger,
+}: {
+  label: string;
+  value: number;
+  strong?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <div style={amountBox}>
+      <div style={{ color: "#64748b", fontSize: 13 }}>{label}</div>
+      <div
+        style={{
+          fontWeight: 900,
+          fontSize: strong ? 22 : 18,
+          color: danger ? "#be123c" : "#312e81",
+          marginTop: 4,
+        }}
+      >
+        {money(value)}
+      </div>
+    </div>
+  );
+}
+
+const pageStyle: React.CSSProperties = {
+  padding: 24,
+  fontFamily: "Arial",
+  background: "linear-gradient(135deg, #e6fffb 0%, #f5f3ff 48%, #ffffff 100%)",
+  minHeight: "100vh",
+};
+
+const hero: React.CSSProperties = {
+  background: "rgba(255,255,255,0.95)",
+  border: "1px solid #dbeafe",
+  borderRadius: 24,
+  padding: 22,
+  boxShadow: "0 18px 40px rgba(31, 41, 55, 0.10)",
+  display: "flex",
+  gap: 20,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const badge: React.CSSProperties = {
+  display: "inline-flex",
+  padding: "6px 12px",
+  borderRadius: 999,
+  background: "#ecfeff",
+  color: "#0f766e",
+  border: "1px solid #99f6e4",
+  fontWeight: 900,
+  fontSize: 13,
+};
+
 const btn: React.CSSProperties = {
   padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid #ddd",
+  borderRadius: 12,
+  border: "1px solid #dbeafe",
   background: "white",
+  fontWeight: 900,
+  cursor: "pointer",
+  color: "#312e81",
+};
+
+const supervisorBox: React.CSSProperties = {
+  marginTop: 14,
+  padding: 12,
+  borderRadius: 14,
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  color: "#1e3a8a",
   fontWeight: 800,
 };
 
-const card: React.CSSProperties = {
-  background: "white",
-  borderRadius: 14,
-  border: "1px solid #eee",
+const gridCards: React.CSSProperties = {
+  marginTop: 16,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: 12,
+};
+
+const miniCard: React.CSSProperties = {
+  background: "rgba(255,255,255,0.92)",
+  border: "1px solid #e0e7ff",
+  borderRadius: 18,
   padding: 14,
+  boxShadow: "0 10px 24px rgba(31, 41, 55, 0.07)",
+};
+
+const card: React.CSSProperties = {
+  background: "rgba(255,255,255,0.95)",
+  borderRadius: 22,
+  border: "1px solid #e0e7ff",
+  padding: 18,
+  marginTop: 16,
+  boxShadow: "0 14px 30px rgba(31, 41, 55, 0.08)",
+};
+
+const title: React.CSSProperties = {
+  margin: "0 0 12px",
+  color: "#312e81",
+};
+
+const totalsGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: 10,
+};
+
+const amountBox: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 14,
+  background: "#f8fafc",
+  border: "1px solid #e5e7eb",
+};
+
+const noteBox: React.CSSProperties = {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 14,
+  background: "#fff7ed",
+  border: "1px solid #fed7aa",
+};
+
+const denomHeader: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "2fr 1fr 1fr",
+  gap: 10,
+  fontWeight: 900,
+  color: "#312e81",
+  opacity: 0.9,
+};
+
+const totalDenomBox: React.CSSProperties = {
+  marginTop: 12,
+  padding: 14,
+  borderRadius: 16,
+  background: "#f5f3ff",
+  border: "1px solid #ddd6fe",
+  display: "flex",
+  justifyContent: "space-between",
+  fontWeight: 900,
+  color: "#312e81",
+};
+
+const twoColumns: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 16,
+};
+
+const relatedCard: React.CSSProperties = {
+  border: "1px solid #e0e7ff",
+  borderRadius: 14,
+  padding: 12,
+  background: "#f8fafc",
 };
 
 const emptyBox: React.CSSProperties = {
   padding: 12,
-  borderRadius: 12,
-  background: "#fafafa",
-  border: "1px solid #eee",
-  opacity: 0.85,
+  borderRadius: 14,
+  background: "#f8fafc",
+  border: "1px solid #e5e7eb",
+  color: "#64748b",
 };
