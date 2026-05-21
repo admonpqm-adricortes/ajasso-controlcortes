@@ -73,95 +73,222 @@ export default function AdminPage() {
     <main
       style={{
         minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        background: "#f6f7fb",
         padding: 24,
+        background:
+          "linear-gradient(135deg, #e6fffb 0%, #f5f3ff 48%, #ffffff 100%)",
+        fontFamily: "Arial",
       }}
     >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 600,
-          background: "white",
-          padding: 24,
-          borderRadius: 16,
-          border: "1px solid #eee",
-        }}
-      >
-        <h1 style={{ margin: 0 }}>
-          {esSupervisor ? "Panel SUPERVISOR" : "Panel ADMIN"}
-        </h1>
-
-        <p style={{ marginTop: 8, color: "#555" }}>
-          Bienvenido {session.username} 👋
-        </p>
-
-        <p style={{ marginTop: 4, color: "#888", fontSize: 13 }}>
-          Rol: <b>{session.role}</b>
-        </p>
-
-        <p style={{ marginTop: 4, color: "#888", fontSize: 13 }}>
-          Sesión válida hasta: {new Date(session.expiresAt).toLocaleString()}
-        </p>
-
-        {esSupervisor ? (
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <header
+          style={{
+            background: "rgba(255,255,255,0.95)",
+            border: "1px solid #dbeafe",
+            borderRadius: 24,
+            padding: 22,
+            boxShadow: "0 18px 40px rgba(31, 41, 55, 0.10)",
+            display: "grid",
+            gridTemplateColumns: "180px 1fr",
+            gap: 20,
+            alignItems: "center",
+          }}
+        >
           <div
             style={{
-              marginTop: 16,
+              background: "white",
+              borderRadius: 18,
               padding: 12,
-              borderRadius: 12,
+              border: "1px solid #eef2ff",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <img
+              src="/logotipo-proquimed.png"
+              alt="PROQUIMED Laboratorio Clínico"
+              style={{
+                width: "100%",
+                maxWidth: 160,
+                height: "auto",
+                objectFit: "contain",
+              }}
+            />
+          </div>
+
+          <div>
+            <div
+              style={{
+                display: "inline-flex",
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: esSupervisor ? "#eff6ff" : "#ecfeff",
+                color: esSupervisor ? "#1d4ed8" : "#0f766e",
+                border: esSupervisor
+                  ? "1px solid #bfdbfe"
+                  : "1px solid #99f6e4",
+                fontWeight: 900,
+                fontSize: 13,
+                marginBottom: 10,
+              }}
+            >
+              {esSupervisor ? "Modo supervisión" : "Modo administración"}
+            </div>
+
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 36,
+                color: "#312e81",
+                lineHeight: 1.05,
+              }}
+            >
+              {esSupervisor ? "Panel Supervisor" : "Panel Admin"}
+            </h1>
+
+            <p style={{ margin: "8px 0 0", color: "#4b5563", fontSize: 16 }}>
+              Bienvenido <b>{session.username}</b>. Control y seguimiento de
+              cortes PROQUIMED.
+            </p>
+          </div>
+        </header>
+
+        <section
+          style={{
+            marginTop: 18,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 14,
+          }}
+        >
+          <InfoCard label="Usuario" value={session.username} />
+          <InfoCard label="Rol" value={session.role} />
+          <InfoCard
+            label="Sesión válida hasta"
+            value={new Date(session.expiresAt).toLocaleString()}
+          />
+        </section>
+
+        {esSupervisor ? (
+          <section
+            style={{
+              marginTop: 18,
+              padding: 14,
+              borderRadius: 18,
               background: "#eff6ff",
               border: "1px solid #bfdbfe",
               color: "#1e3a8a",
-              fontSize: 14,
+              fontWeight: 700,
             }}
           >
-            Modo supervisión: acceso de consulta, revisión y exportación.
-          </div>
+            Acceso de consulta, revisión visual y exportación. No modifica
+            información crítica.
+          </section>
         ) : null}
 
-        <div
+        <section
           style={{
+            marginTop: 22,
             display: "grid",
-            gap: 12,
-            marginTop: 20,
+            gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+            gap: 16,
           }}
         >
-          <button onClick={() => router.push("/admin/cierres")} style={btn}>
-            📊 Ver cierres
+          <button
+            onClick={() => router.push("/admin/cierres")}
+            style={actionCard}
+          >
+            <span style={iconBubble}>📊</span>
+            <span>
+              <strong>Ver cierres</strong>
+              <small>Historial, PDFs, vouchers y exportaciones</small>
+            </span>
           </button>
 
           {esAdmin ? (
             <button
               onClick={() => router.push("/admin/conciliacion")}
-              style={btn}
+              style={actionCard}
             >
-              🧾 Conciliación bancaria
+              <span style={iconBubble}>🧾</span>
+              <span>
+                <strong>Conciliación bancaria</strong>
+                <small>Cruce de movimientos y cortes</small>
+              </span>
             </button>
           ) : null}
 
           <button
             onClick={() => cerrarSesion(router)}
             style={{
-              ...btn,
-              background: "#fee2e2",
+              ...actionCard,
               border: "1px solid #fecaca",
+              background: "#fff1f2",
             }}
           >
-            🚪 Cerrar sesión
+            <span
+              style={{
+                ...iconBubble,
+                background: "#fee2e2",
+                color: "#991b1b",
+              }}
+            >
+              🚪
+            </span>
+            <span>
+              <strong>Cerrar sesión</strong>
+              <small>Salir de forma segura</small>
+            </span>
           </button>
-        </div>
+        </section>
       </div>
     </main>
   );
 }
 
-const btn: React.CSSProperties = {
-  padding: 14,
-  borderRadius: 10,
-  border: "1px solid #ddd",
-  background: "white",
-  fontWeight: 800,
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "rgba(255,255,255,0.92)",
+        border: "1px solid #e0e7ff",
+        borderRadius: 18,
+        padding: 16,
+        boxShadow: "0 10px 24px rgba(31, 41, 55, 0.07)",
+      }}
+    >
+      <div style={{ color: "#64748b", fontSize: 13, marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ color: "#312e81", fontWeight: 900, fontSize: 16 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+const actionCard: React.CSSProperties = {
+  minHeight: 120,
+  borderRadius: 22,
+  border: "1px solid #dbeafe",
+  background: "rgba(255,255,255,0.95)",
+  boxShadow: "0 14px 30px rgba(31, 41, 55, 0.09)",
+  padding: 18,
   cursor: "pointer",
+  display: "flex",
+  gap: 14,
+  alignItems: "center",
+  textAlign: "left",
+  color: "#312e81",
+};
+
+const iconBubble: React.CSSProperties = {
+  width: 46,
+  height: 46,
+  borderRadius: 16,
+  background: "#ecfeff",
+  color: "#0f766e",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 24,
+  flexShrink: 0,
 };
