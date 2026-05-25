@@ -1,8 +1,10 @@
-export type Role = "ADMIN" | "SUCURSAL";
+export type Role = "ADMIN" | "SUPERVISOR" | "SUCURSAL";
 
 export type Session = {
   username: string;
   role: Role;
+  email?: string;
+  sucursalId?: string;
 };
 
 export type MetodosPago = {
@@ -16,12 +18,18 @@ export type MetodosPago = {
 export type Corte = {
   id: string;
   sucursalId: string;
-  fecha: string; // YYYY-MM-DD
+  fecha: string;
   metodos: MetodosPago;
   total: number;
   status: "ABIERTO" | "CERRADO";
   createdAt: string;
   createdBy: string;
+
+  origen?: "PDF" | "MANUAL";
+  pdfName?: string;
+  pdfDataUrl?: string;
+  usuarioPdf?: string;
+  uploadedByEmail?: string;
 };
 
 export type DenominacionesMXN = {
@@ -61,7 +69,6 @@ export type CierreDia = {
   pdfName?: string;
   pdfDataUrl?: string;
 
-  // NUEVO: voucher terminal
   voucherName?: string;
   voucherDataUrl?: string;
 
