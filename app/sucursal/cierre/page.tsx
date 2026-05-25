@@ -495,20 +495,41 @@ export default function CierreSucursalPage() {
             </div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
-              {cortesPendientes.map((c, idx) => (
-                <div key={c.id || idx} style={corteCard}>
-                  <div>
-                    <b>{(c as any).usuarioPdf || c.createdBy || "Corte"}</b>
-                    <div style={{ color: "#64748b", fontSize: 13 }}>
-                      {c.id} · {c.status}
-                    </div>
-                  </div>
+{cortesPendientes.map((c, idx) => (
+  <div key={c.id || idx} style={corteCard}>
+    <div>
+      <b>{c.usuarioPdf || c.createdBy || "Corte"}</b>
 
-                  <div style={{ fontWeight: 900, color: "#0f766e" }}>
-                    {money(c.total || 0)}
-                  </div>
-                </div>
-              ))}
+      <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>
+        {c.id} · {c.status}
+      </div>
+
+      {c.pdfName ? (
+        <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>
+          📄 {c.pdfName}
+        </div>
+      ) : null}
+    </div>
+
+    <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+      <div style={{ fontWeight: 900, color: "#0f766e", fontSize: 18 }}>
+        {money(c.total || 0)}
+      </div>
+
+      {c.pdfDataUrl ? (
+        <button
+          type="button"
+          onClick={() => window.open(c.pdfDataUrl, "_blank")}
+          style={smallBtn}
+        >
+          👁 Ver PDF
+        </button>
+      ) : (
+        <span style={{ color: "#94a3b8", fontSize: 12 }}>Sin PDF</span>
+      )}
+    </div>
+  </div>
+))}
             </div>
           )}
         </section>
@@ -944,7 +965,7 @@ const warningBox: React.CSSProperties = {
   padding: 12,
   borderRadius: 14,
   background: "#fff7ed",
-  border: "1px solid #fed7aa",
+  border: "1px solid #fed7aa", 
   color: "#9a3412",
   fontWeight: 800,
 };
@@ -970,5 +991,15 @@ const saveBtn: React.CSSProperties = {
   color: "white",
   cursor: "pointer",
   fontWeight: 900,
-  fontSize: 16,
+  fontSize: 16, 
+};
+
+const smallBtn: React.CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #99f6e4",
+  background: "white",
+  color: "#0f766e",
+  fontWeight: 800,
+  cursor: "pointer",
 };
