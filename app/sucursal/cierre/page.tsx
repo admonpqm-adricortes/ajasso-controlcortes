@@ -71,9 +71,7 @@ async function ensurePdfJs() {
     document.head.appendChild(s);
   });
 
-  if (!window.pdfjsLib) {
-    throw new Error("pdf.js no quedó disponible");
-  }
+  if (!window.pdfjsLib) throw new Error("pdf.js no quedó disponible");
 
   if (window.pdfjsLib?.GlobalWorkerOptions) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
@@ -141,11 +139,26 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function sumarCortes(cortes: Corte[]): MetodosPago {
+  return cortes.reduce<MetodosPago>(
+    (acc, c) => {
+      acc.efectivo = (acc.efectivo ?? 0) + (c.metodos.efectivo ?? 0);
+      acc.tarjeta = (acc.tarjeta ?? 0) + (c.metodos.tarjeta ?? 0);
+      acc.transferencia =
+        (acc.transferencia ?? 0) + (c.metodos.transferencia ?? 0);
+      acc.vales = (acc.vales ?? 0) + (c.metodos.vales ?? 0);
+      acc.otros = (acc.otros ?? 0) + (c.metodos.otros ?? 0);
+      return acc;
+    },
+    { efectivo: 0, tarjeta: 0, transferencia: 0, vales: 0, otros: 0 }
+  );
+}
+
 export default function CierreSucursalPage() {
   const router = useRouter();
 
   const [session, setSession] = useState<Session>({});
-  const [sucursal, setSucursal] = useState<string>("");
+  const [sucursal, setSucursal] = useState("");
 
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [pdfError, setPdfError] = useState("");
@@ -157,7 +170,7 @@ export default function CierreSucursalPage() {
   const [voucherName, setVoucherName] = useState("");
   const [voucherPreview, setVoucherPreview] = useState("");
 
-  const [fechaYMD, setFechaYMD] = useState<string>(() => {
+  const [fechaYMD, setFechaYMD] = useState(() => {
     const d = new Date();
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -178,8 +191,8 @@ export default function CierreSucursalPage() {
     total: 0,
   });
 
-  const [bolsaFinal, setBolsaFinal] = useState<number>(0);
-  const [capturarDenoms, setCapturarDenoms] = useState<boolean>(false);
+  const [bolsaFinal, setBolsaFinal] = useState(0);
+  const [capturarDenoms, setCapturarDenoms] = useState(false);
 
   const [denoms, setDenoms] = useState<DenominacionesMXN>({
     b1000: 0,
@@ -207,12 +220,7 @@ export default function CierreSucursalPage() {
 
       const parsed = JSON.parse(raw) as Session;
 
-      if (parsed?.role !== "SUCURSAL") {
-        router.replace("/acceso");
-        return;
-      }
-
-      if (!parsed?.sucursalId) {
+      if (parsed?.role !== "SUCURSAL" || !parsed?.sucursalId) {
         router.replace("/acceso");
         return;
       }
@@ -308,19 +316,25 @@ export default function CierreSucursalPage() {
     }
   }
 
-  const totalDenoms = useMemo(() => totalDenominacionesMXN(denoms), [denoms]);
+  const hayCortesPendientes = cortesPendientes.length > 0;
 
-  const totalEsperado =
-    totalesPdf.total ||
-    totalMetodos({
-      efectivo: totalesPdf.efectivo,
-      tarjeta: totalesPdf.tarjeta,
-      transferencia: totalesPdf.transferencia,
-      vales: totalesPdf.vales,
-      otros: totalesPdf.otros,
-    } as MetodosPago);
+  const totalesCortes = useMemo(
+    () => sumarCortes(cortesPendientes),
+    [cortesPendientes]
+  );
 
-  const efectivoEsperado = Number(totalesPdf.efectivo || 0);
+  const totalesBase: MetodosPago = hayCortesPendientes
+    ? totalesCortes
+    : {
+        efectivo: Number(totalesPdf.efectivo || 0),
+        tarjeta: Number(totalesPdf.tarjeta || 0),
+        transferencia: Number(totalesPdf.transferencia || 0),
+        vales: Number(totalesPdf.vales || 0),
+        otros: Number(totalesPdf.otros || 0),
+      };
+
+  const totalEsperado = totalMetodos(totalesBase);
+  const efectivoEsperado = Number(totalesBase.efectivo || 0);
 
   const efectivoNetoAEnviar = Math.max(
     0,
@@ -338,317 +352,283 @@ export default function CierreSucursalPage() {
   );
 
   const diferencia = Number(bolsaFinal || 0) - efectivoNetoAEnviar;
+  const totalDenoms = useMemo(() => totalDenominacionesMXN(denoms), [denoms]);
 
-  function guardarCierre() {
-    const run = async () => {
-      try {
-        if (!sucursal) {
-          throw new Error("No hay sucursal asignada a este usuario");
-        }
+  async function guardarCierre() {
+    try {
+      if (!sucursal) throw new Error("No hay sucursal asignada");
+      if (!session?.username) throw new Error("No hay sesión activa");
 
-        if (!pdfFile) {
-          throw new Error("Debes subir el PDF antes de guardar");
-        }
-
-        if (!session?.username) {
-          throw new Error("No hay sesión activa");
-        }
-
-        const pdfDataUrl = await fileToBase64(pdfFile);
-
-        let voucherDataUrl: string | undefined;
-        if (voucherFile) {
-          voucherDataUrl = await fileToBase64(voucherFile);
-        }
-
-        if ((totalesPdf.tarjeta || 0) > 0 && !voucherFile) {
-          throw new Error(
-            "Este corte tiene tarjeta. Debes subir la imagen del voucher antes de guardar."
-          );
-        }
-
-        setGuardando(true);
-
-        await crearCierre({
-          sucursalId: sucursal,
-          fecha: fechaYMD,
-          bolsaFinal: Number(bolsaFinal || 0),
-          denominaciones: capturarDenoms ? denoms : undefined,
-          observaciones: pdfName ? `PDF cargado: ${pdfName}` : undefined,
-          createdBy: session.username,
-          pdfName: pdfFile.name,
-          pdfDataUrl,
-          totalesPdf: {
-            efectivo: Number(totalesPdf.efectivo || 0),
-            tarjeta: Number(totalesPdf.tarjeta || 0),
-            transferencia: Number(totalesPdf.transferencia || 0),
-            vales: Number(totalesPdf.vales || 0),
-            otros: Number(totalesPdf.otros || 0),
-          },
-          voucherName: voucherFile?.name,
-          voucherDataUrl,
-          saldoSobranteAnterior,
-        });
-
-        alert("Cierre guardado ✅");
-
-        setPdfFile(null);
-        setPdfName("");
-        setPdfText("");
-        setVoucherFile(null);
-        setVoucherName("");
-        setVoucherPreview("");
-        setTotalesPdf({
-          efectivo: 0,
-          tarjeta: 0,
-          transferencia: 0,
-          vales: 0,
-          otros: 0,
-          total: 0,
-        });
-        setBolsaFinal(0);
-        setCapturarDenoms(false);
-        setDenoms({
-          b1000: 0,
-          b500: 0,
-          b200: 0,
-          b100: 0,
-          b50: 0,
-          b20: 0,
-          m20: 0,
-          m10: 0,
-          m5: 0,
-          m2: 0,
-          m1: 0,
-          m050: 0,
-        });
-
-        recargar();
-        router.push("/sucursal");
-      } catch (e: any) {
-        console.error(e);
-        alert(e?.message || "No se pudo guardar el cierre");
-      } finally {
-        setGuardando(false);
+      if (!hayCortesPendientes && !pdfFile) {
+        throw new Error(
+          "No hay cortes pendientes. Sube un PDF de respaldo para generar el cierre."
+        );
       }
-    };
 
-    run();
+      if ((totalesBase.tarjeta || 0) > 0 && !voucherFile) {
+        throw new Error(
+          "Este cierre tiene tarjeta. Debes subir la imagen del voucher antes de guardar."
+        );
+      }
+
+      setGuardando(true);
+
+      let pdfDataUrl: string | undefined;
+      if (pdfFile) {
+        pdfDataUrl = await fileToBase64(pdfFile);
+      }
+
+      let voucherDataUrl: string | undefined;
+      if (voucherFile) {
+        voucherDataUrl = await fileToBase64(voucherFile);
+      }
+
+      await crearCierre({
+        sucursalId: sucursal,
+        fecha: fechaYMD,
+        bolsaFinal: Number(bolsaFinal || 0),
+        denominaciones: capturarDenoms ? denoms : undefined,
+        observaciones: hayCortesPendientes
+          ? `Cierre generado con ${cortesPendientes.length} corte(s) pendiente(s)`
+          : pdfName
+          ? `PDF de respaldo cargado: ${pdfName}`
+          : undefined,
+        createdBy: session.username,
+        pdfName: pdfFile?.name,
+        pdfDataUrl,
+        totalesPdf: hayCortesPendientes ? undefined : totalesBase,
+        voucherName: voucherFile?.name,
+        voucherDataUrl,
+        saldoSobranteAnterior,
+      });
+
+      alert("Cierre guardado ✅");
+
+      router.push("/sucursal");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "No se pudo guardar el cierre");
+    } finally {
+      setGuardando(false);
+    }
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <button onClick={() => router.back()} style={{ marginBottom: 16 }}>
-        ← Volver
-      </button>
+    <main style={pageStyle}>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+        <header style={hero}>
+          <img
+            src="/logotipo-proquimed.png"
+            alt="PROQUIMED"
+            style={{ width: 150, height: "auto" }}
+          />
 
-      <h1 style={{ fontSize: 42, margin: "0 0 18px 0" }}>Cierre del día</h1>
-
-      <section style={cardStyle}>
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
-        >
           <div>
-            <label>
-              <b>Sucursal asignada</b>
-            </label>
+            <button onClick={() => router.push("/sucursal")} style={backBtn}>
+              ← Volver
+            </button>
 
-            <div
-              style={{
-                ...inputStyle,
-                background: "#f3f4f6",
-                minHeight: 42,
-                display: "flex",
-                alignItems: "center",
-                fontWeight: 800,
-              }}
-            >
-              {sucursal || "—"}
+            <h1 style={{ margin: "12px 0 4px", color: "#312e81" }}>
+              Cierre del día
+            </h1>
+
+            <p style={{ margin: 0, color: "#4b5563" }}>
+              Sucursal: <b>{sucursal || "—"}</b>
+            </p>
+          </div>
+        </header>
+
+        <section style={card}>
+          <h2 style={title}>Datos generales</h2>
+
+          <div style={grid2}>
+            <div>
+              <label style={label}>Sucursal asignada</label>
+              <div style={lockedInput}>{sucursal || "—"}</div>
+            </div>
+
+            <div>
+              <label style={label}>Fecha</label>
+              <input
+                type="date"
+                value={fechaYMD}
+                onChange={(e) => setFechaYMD(e.target.value)}
+                style={input}
+              />
             </div>
           </div>
 
-          <div>
-            <label>
-              <b>Fecha</b>
-            </label>
+          <button onClick={recargar} style={{ ...backBtn, marginTop: 12 }}>
+            Actualizar cortes
+          </button>
+        </section>
+
+        <section style={summaryGrid}>
+          <StatCard
+            label="Cortes pendientes"
+            value={String(cortesPendientes.length)}
+          />
+          <StatCard label="Total esperado" value={money(totalEsperado)} />
+          <StatCard
+            label="Efectivo requerido"
+            value={money(efectivoNetoAEnviar)}
+          />
+          <StatCard
+            label="Voucher"
+            value={
+              (totalesBase.tarjeta || 0) > 0
+                ? voucherFile
+                  ? "Cargado"
+                  : "Pendiente"
+                : "No aplica"
+            }
+          />
+        </section>
+
+        <section style={card}>
+          <h2 style={title}>Cortes pendientes</h2>
+
+          {cortesPendientes.length === 0 ? (
+            <div style={warningBox}>
+              No hay cortes pendientes para esta fecha. Puedes subir un PDF de
+              respaldo para generar el cierre.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {cortesPendientes.map((c, idx) => (
+                <div key={c.id || idx} style={corteCard}>
+                  <div>
+                    <b>{(c as any).usuarioPdf || c.createdBy || "Corte"}</b>
+                    <div style={{ color: "#64748b", fontSize: 13 }}>
+                      {c.id} · {c.status}
+                    </div>
+                  </div>
+
+                  <div style={{ fontWeight: 900, color: "#0f766e" }}>
+                    {money(c.total || 0)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {!hayCortesPendientes ? (
+          <section style={card}>
+            <h2 style={title}>PDF de respaldo</h2>
+
             <input
-              type="date"
-              value={fechaYMD}
-              onChange={(e) => setFechaYMD(e.target.value)}
-              style={inputStyle}
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => onPickPdf(e.target.files?.[0] || null)}
             />
-          </div>
-        </div>
-      </section>
 
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>PDF del corte (obligatorio)</h2>
-
-        <input
-          type="file"
-          accept="application/pdf"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) onPickPdf(f);
-          }}
-        />
-
-        <div style={{ marginTop: 8 }}>
-          <b>Archivo:</b> {pdfName || "—"}
-        </div>
-
-        {loadingPdf && <div style={{ marginTop: 10 }}>Leyendo PDF…</div>}
-
-        {pdfError ? (
-          <div style={errorBox}>
-            <b>Error leyendo PDF:</b> {pdfError}
-            <div style={{ marginTop: 6, fontSize: 12 }}>
-              Tip: en consola puedes ver{" "}
-              <code>localStorage.getItem("ultimoPdfTexto")</code>
+            <div style={{ marginTop: 8 }}>
+              <b>Archivo:</b> {pdfName || "—"}
             </div>
-          </div>
+
+            {loadingPdf ? <div style={infoBox}>Leyendo PDF…</div> : null}
+            {pdfError ? <div style={errorBox}>{pdfError}</div> : null}
+          </section>
         ) : null}
 
-        <button style={{ marginTop: 12 }} onClick={recargar}>
-          Actualizar
-        </button>
-      </section>
+        <section style={card}>
+          <h2 style={title}>Totales del cierre</h2>
 
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Voucher terminal</h2>
+          <div style={amountGrid}>
+            <Amount label="Efectivo" value={totalesBase.efectivo ?? 0} />
+            <Amount label="Tarjeta" value={totalesBase.tarjeta ?? 0} />
+            <Amount
+              label="Transferencia"
+              value={totalesBase.transferencia ?? 0}
+            />
+            <Amount label="Vales" value={totalesBase.vales ?? 0} />
+            <Amount label="Otros" value={totalesBase.otros ?? 0} />
+            <Amount label="Total esperado" value={totalEsperado} strong />
+          </div>
+        </section>
 
-        <div style={{ marginBottom: 8, color: "#555" }}>
-          {(totalesPdf.tarjeta || 0) > 0
-            ? "Este corte tiene tarjeta. Debes subir la imagen del voucher."
-            : "Si el corte no trae tarjeta, puedes dejar este campo vacío."}
-        </div>
+        <section style={card}>
+          <h2 style={title}>Voucher terminal</h2>
 
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => onPickVoucher(e.target.files?.[0] || null)}
-        />
+          <div style={{ marginBottom: 8, color: "#555" }}>
+            {(totalesBase.tarjeta || 0) > 0
+              ? "Este cierre tiene tarjeta. Debes subir la imagen del voucher."
+              : "Este cierre no tiene tarjeta. Puedes dejarlo vacío."}
+          </div>
 
-        <div style={{ marginTop: 8 }}>
-          <b>Archivo:</b> {voucherName || "—"}
-        </div>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => onPickVoucher(e.target.files?.[0] || null)}
+          />
 
-        {voucherPreview ? (
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 8 }}>
+            <b>Archivo:</b> {voucherName || "—"}
+          </div>
+
+          {voucherPreview ? (
             <img
               src={voucherPreview}
               alt="Vista previa voucher"
               style={{
+                marginTop: 12,
                 maxWidth: "100%",
                 maxHeight: 260,
                 border: "1px solid #ddd",
-                borderRadius: 12,
+                borderRadius: 14,
               }}
             />
-          </div>
-        ) : null}
-      </section>
+          ) : null}
+        </section>
 
-      <section style={cardStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>
-            Cortes pendientes ({cortesPendientes.length})
-          </h2>
-          <button onClick={recargar}>Actualizar</button>
-        </div>
+        <section style={card}>
+          <h2 style={title}>Bolsa final y efectivo</h2>
 
-        {cortesPendientes.length === 0 ? (
-          <div>No hay cortes abiertos para esta fecha.</div>
-        ) : (
-          <ul>
-            {cortesPendientes.map((c, idx) => (
-              <li key={c.id || idx}>
-                {c.id} — {money(c.total || 0)}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          <div style={highlightBox}>
+            <div>
+              <div style={{ color: "#64748b", fontSize: 13 }}>
+                Efectivo que debe capturar/enviar
+              </div>
+              <div style={{ fontWeight: 900, fontSize: 30, color: "#0f766e" }}>
+                {money(efectivoNetoAEnviar)}
+              </div>
+            </div>
+          </div>
 
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Totales (del PDF)</h2>
+          <label style={label}>Bolsa final física</label>
+          <input
+            type="number"
+            value={bolsaFinal}
+            onChange={(e) => setBolsaFinal(Number(e.target.value || 0))}
+            style={input}
+          />
 
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
-        >
-          <div>
-            Efectivo: <b>{money(totalesPdf.efectivo)}</b>
+          <div style={{ ...amountGrid, marginTop: 14 }}>
+            <Amount label="Efectivo esperado" value={efectivoEsperado} />
+            <Amount
+              label="Saldo sobrante anterior"
+              value={saldoSobranteAnterior}
+            />
+            <Amount
+              label="Efectivo neto a enviar"
+              value={efectivoNetoAEnviar}
+              strong
+            />
+            <Amount label="Sobrante del corte" value={sobranteCorte} />
+            <Amount
+              label="Saldo sobrante proyectado"
+              value={saldoSobranteProyectado}
+            />
+            <Amount
+              label="Diferencia"
+              value={diferencia}
+              danger={diferencia !== 0}
+              strong
+            />
           </div>
-          <div>
-            Tarjeta: <b>{money(totalesPdf.tarjeta)}</b>
-          </div>
-          <div>
-            Transferencia: <b>{money(totalesPdf.transferencia)}</b>
-          </div>
-          <div>
-            Vales: <b>{money(totalesPdf.vales)}</b>
-          </div>
-          <div>
-            Otros: <b>{money(totalesPdf.otros)}</b>
-          </div>
-          <div>
-            Total esperado: <b>{money(totalEsperado)}</b>
-          </div>
-        </div>
-      </section>
 
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Bolsa final</h2>
-
-        <label>
-          <b>Bolsa final (efectivo enviado hoy)</b>
-        </label>
-        <input
-          type="number"
-          value={bolsaFinal}
-          onChange={(e) => setBolsaFinal(Number(e.target.value || 0))}
-          style={{ ...inputStyle, marginTop: 8 }}
-        />
-
-        <div
-          style={{
-            marginTop: 14,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 14,
-          }}
-        >
-          <div>
-            Efectivo esperado del corte: <b>{money(efectivoEsperado)}</b>
-          </div>
-          <div>
-            Saldo sobrante anterior: <b>{money(saldoSobranteAnterior)}</b>
-          </div>
-          <div>
-            Efectivo neto a enviar: <b>{money(efectivoNetoAEnviar)}</b>
-          </div>
-          <div>
-            Sobrante del corte: <b>{money(sobranteCorte)}</b>
-          </div>
-          <div>
-            Saldo sobrante proyectado: <b>{money(saldoSobranteProyectado)}</b>
-          </div>
-          <div>
-            Diferencia vs efectivo neto a enviar:{" "}
-            <b style={{ color: diferencia === 0 ? "green" : "crimson" }}>
-              {money(diferencia)}
-            </b>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <label style={{ display: "flex", gap: 8, marginTop: 16 }}>
             <input
               type="checkbox"
               checked={capturarDenoms}
@@ -656,105 +636,139 @@ export default function CierreSucursalPage() {
             />
             <b>Capturar denominaciones</b>
           </label>
-        </div>
 
-        {capturarDenoms ? (
-          <div
-            style={{
-              marginTop: 12,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
-            }}
-          >
-            <DenInput
-              label="$1000"
-              value={denoms.b1000}
-              onChange={(v) => setDenoms((p) => ({ ...p, b1000: v }))}
-            />
-            <DenInput
-              label="$500"
-              value={denoms.b500}
-              onChange={(v) => setDenoms((p) => ({ ...p, b500: v }))}
-            />
-            <DenInput
-              label="$200"
-              value={denoms.b200}
-              onChange={(v) => setDenoms((p) => ({ ...p, b200: v }))}
-            />
-            <DenInput
-              label="$100"
-              value={denoms.b100}
-              onChange={(v) => setDenoms((p) => ({ ...p, b100: v }))}
-            />
-            <DenInput
-              label="$50"
-              value={denoms.b50}
-              onChange={(v) => setDenoms((p) => ({ ...p, b50: v }))}
-            />
-            <DenInput
-              label="$20 billete"
-              value={denoms.b20}
-              onChange={(v) => setDenoms((p) => ({ ...p, b20: v }))}
-            />
-            <DenInput
-              label="$20 moneda"
-              value={denoms.m20}
-              onChange={(v) => setDenoms((p) => ({ ...p, m20: v }))}
-            />
-            <DenInput
-              label="$10 moneda"
-              value={denoms.m10}
-              onChange={(v) => setDenoms((p) => ({ ...p, m10: v }))}
-            />
-            <DenInput
-              label="$5 moneda"
-              value={denoms.m5}
-              onChange={(v) => setDenoms((p) => ({ ...p, m5: v }))}
-            />
-            <DenInput
-              label="$2 moneda"
-              value={denoms.m2}
-              onChange={(v) => setDenoms((p) => ({ ...p, m2: v }))}
-            />
-            <DenInput
-              label="$1 moneda"
-              value={denoms.m1}
-              onChange={(v) => setDenoms((p) => ({ ...p, m1: v }))}
-            />
-            <DenInput
-              label="$0.50 moneda"
-              value={denoms.m050}
-              onChange={(v) => setDenoms((p) => ({ ...p, m050: v }))}
-            />
+          {capturarDenoms ? (
+            <div style={denomGrid}>
+              <DenInput
+                label="$1000"
+                value={denoms.b1000}
+                onChange={(v) => setDenoms((p) => ({ ...p, b1000: v }))}
+              />
+              <DenInput
+                label="$500"
+                value={denoms.b500}
+                onChange={(v) => setDenoms((p) => ({ ...p, b500: v }))}
+              />
+              <DenInput
+                label="$200"
+                value={denoms.b200}
+                onChange={(v) => setDenoms((p) => ({ ...p, b200: v }))}
+              />
+              <DenInput
+                label="$100"
+                value={denoms.b100}
+                onChange={(v) => setDenoms((p) => ({ ...p, b100: v }))}
+              />
+              <DenInput
+                label="$50"
+                value={denoms.b50}
+                onChange={(v) => setDenoms((p) => ({ ...p, b50: v }))}
+              />
+              <DenInput
+                label="$20 billete"
+                value={denoms.b20}
+                onChange={(v) => setDenoms((p) => ({ ...p, b20: v }))}
+              />
+              <DenInput
+                label="$20 moneda"
+                value={denoms.m20}
+                onChange={(v) => setDenoms((p) => ({ ...p, m20: v }))}
+              />
+              <DenInput
+                label="$10 moneda"
+                value={denoms.m10}
+                onChange={(v) => setDenoms((p) => ({ ...p, m10: v }))}
+              />
+              <DenInput
+                label="$5 moneda"
+                value={denoms.m5}
+                onChange={(v) => setDenoms((p) => ({ ...p, m5: v }))}
+              />
+              <DenInput
+                label="$2 moneda"
+                value={denoms.m2}
+                onChange={(v) => setDenoms((p) => ({ ...p, m2: v }))}
+              />
+              <DenInput
+                label="$1 moneda"
+                value={denoms.m1}
+                onChange={(v) => setDenoms((p) => ({ ...p, m1: v }))}
+              />
+              <DenInput
+                label="$0.50 moneda"
+                value={denoms.m050}
+                onChange={(v) => setDenoms((p) => ({ ...p, m050: v }))}
+              />
 
-            <div style={{ gridColumn: "1 / -1", marginTop: 6 }}>
-              Total denominaciones: <b>{money(totalDenoms)}</b>
+              <div style={totalDenomBox}>
+                <span>Total denominaciones</span>
+                <span>{money(totalDenoms)}</span>
+              </div>
             </div>
-          </div>
-        ) : null}
-      </section>
+          ) : null}
+        </section>
 
-      <section style={{ marginBottom: 30 }}>
-        <button onClick={guardarCierre} disabled={!pdfFile || guardando}>
-          {guardando ? "Guardando..." : "Guardar cierre"}
+        <button
+          onClick={guardarCierre}
+          disabled={guardando || (!hayCortesPendientes && !pdfFile)}
+          style={{
+            ...saveBtn,
+            opacity: guardando || (!hayCortesPendientes && !pdfFile) ? 0.6 : 1,
+          }}
+        >
+          {guardando ? "Guardando..." : "Guardar cierre global del día"}
         </button>
-        {!pdfFile ? (
-          <span style={{ marginLeft: 10, color: "crimson" }}>
-            Sube el PDF para poder guardar
-          </span>
-        ) : null}
-      </section>
 
-      {pdfText ? (
-        <details>
-          <summary>Debug: texto del PDF</summary>
-          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
-            {pdfText.slice(-2000)}
-          </pre>
-        </details>
-      ) : null}
+        {pdfText ? (
+          <details style={{ marginTop: 16 }}>
+            <summary>Debug: texto del PDF</summary>
+            <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
+              {pdfText.slice(-2000)}
+            </pre>
+          </details>
+        ) : null}
+      </div>
     </main>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={statCard}>
+      <div style={{ color: "#0f766e", fontWeight: 900, fontSize: 13 }}>
+        {label}
+      </div>
+      <div style={{ color: "#312e81", fontWeight: 900, fontSize: 24 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Amount({
+  label,
+  value,
+  strong,
+  danger,
+}: {
+  label: string;
+  value: number;
+  strong?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <div style={amountBox}>
+      <div style={{ color: "#64748b", fontSize: 13 }}>{label}</div>
+      <div
+        style={{
+          fontWeight: 900,
+          fontSize: strong ? 22 : 18,
+          color: danger ? "#be123c" : "#312e81",
+        }}
+      >
+        {money(value)}
+      </div>
+    </div>
   );
 }
 
@@ -769,38 +783,192 @@ function DenInput({
 }) {
   return (
     <div>
-      <label>
-        <b>{label}</b>
-      </label>
+      <label style={labelStyle}>{label}</label>
       <input
         type="number"
         value={value}
         onChange={(e) => onChange(Number(e.target.value || 0))}
-        style={{ ...inputStyle, marginTop: 6 }}
+        style={input}
       />
     </div>
   );
 }
 
-const cardStyle: React.CSSProperties = {
-  border: "1px solid #eee",
-  borderRadius: 16,
-  padding: 16,
-  marginBottom: 16,
-  background: "white",
+const pageStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  padding: 24,
+  background: "linear-gradient(135deg, #e6fffb 0%, #f5f3ff 48%, #ffffff 100%)",
+  fontFamily: "Arial",
 };
 
-const inputStyle: React.CSSProperties = {
+const hero: React.CSSProperties = {
+  background: "rgba(255,255,255,0.95)",
+  border: "1px solid #dbeafe",
+  borderRadius: 24,
+  padding: 22,
+  boxShadow: "0 18px 40px rgba(31, 41, 55, 0.10)",
+  display: "flex",
+  gap: 20,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const card: React.CSSProperties = {
+  background: "rgba(255,255,255,0.95)",
+  borderRadius: 22,
+  border: "1px solid #e0e7ff",
+  padding: 18,
+  marginTop: 16,
+  boxShadow: "0 14px 30px rgba(31, 41, 55, 0.08)",
+};
+
+const title: React.CSSProperties = {
+  margin: "0 0 12px",
+  color: "#312e81",
+};
+
+const grid2: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+};
+
+const summaryGrid: React.CSSProperties = {
+  marginTop: 16,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: 12,
+};
+
+const amountGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: 10,
+};
+
+const denomGrid: React.CSSProperties = {
+  marginTop: 12,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 12,
+};
+
+const label: React.CSSProperties = {
+  display: "block",
+  fontWeight: 900,
+  color: "#312e81",
+  marginBottom: 6,
+};
+
+const labelStyle = label;
+
+const input: React.CSSProperties = {
   width: "100%",
-  padding: 10,
-  borderRadius: 10,
-  border: "1px solid #ddd",
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+};
+
+const lockedInput: React.CSSProperties = {
+  ...input,
+  background: "#f3f4f6",
+  fontWeight: 900,
+};
+
+const backBtn: React.CSSProperties = {
+  padding: "9px 12px",
+  borderRadius: 12,
+  border: "1px solid #dbeafe",
+  background: "white",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const statCard: React.CSSProperties = {
+  background: "rgba(255,255,255,0.95)",
+  border: "1px solid #ccfbf1",
+  borderRadius: 18,
+  padding: 16,
+  boxShadow: "0 10px 24px rgba(31, 41, 55, 0.07)",
+};
+
+const corteCard: React.CSSProperties = {
+  padding: 14,
+  borderRadius: 16,
+  border: "1px solid #99f6e4",
+  background: "#ecfeff",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+};
+
+const amountBox: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 14,
+  background: "#f8fafc",
+  border: "1px solid #e5e7eb",
+};
+
+const highlightBox: React.CSSProperties = {
+  padding: 16,
+  borderRadius: 18,
+  background: "#ecfeff",
+  border: "1px solid #99f6e4",
+  marginBottom: 14,
+};
+
+const totalDenomBox: React.CSSProperties = {
+  gridColumn: "1 / -1",
+  padding: 14,
+  borderRadius: 16,
+  background: "#f5f3ff",
+  border: "1px solid #ddd6fe",
+  display: "flex",
+  justifyContent: "space-between",
+  fontWeight: 900,
+  color: "#312e81",
+};
+
+const infoBox: React.CSSProperties = {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 14,
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  color: "#1e3a8a",
+  fontWeight: 800,
+};
+
+const warningBox: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 14,
+  background: "#fff7ed",
+  border: "1px solid #fed7aa",
+  color: "#9a3412",
+  fontWeight: 800,
 };
 
 const errorBox: React.CSSProperties = {
   marginTop: 12,
-  background: "#ffe5e5",
-  border: "1px solid #ffb3b3",
+  background: "#fff1f2",
+  border: "1px solid #fecdd3",
+  color: "#be123c",
   padding: 12,
-  borderRadius: 12,
+  borderRadius: 14,
+  fontWeight: 800,
+};
+
+const saveBtn: React.CSSProperties = {
+  marginTop: 18,
+  marginBottom: 30,
+  width: "100%",
+  padding: 16,
+  borderRadius: 16,
+  border: "none",
+  background: "linear-gradient(90deg, #0d9488, #4338ca)",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 16,
 };
