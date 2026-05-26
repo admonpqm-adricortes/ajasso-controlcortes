@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveCorte, uid, totalMetodos } from "@/lib/storage";
-import type { MetodosPago, Corte, TurnoCierre } from "@/lib/types"; 
+import type { MetodosPago, Corte, TurnoCierre } from "@/lib/types";
 import { parseTotalesDesdePdfText } from "@/lib/corteParser";
 
 declare global {
@@ -23,13 +23,13 @@ type Session = {
   sucursalId?: string;
 };
 
-type Modo = "PDF" | "MANUAL"; 
+type Modo = "PDF" | "MANUAL";
 
 const SUCURSAL_DOBLE_CIERRE = "M-MEDICA CAMPESTRE";
 
 function requiereTurno(sucursalId?: string) {
   return sucursalId === SUCURSAL_DOBLE_CIERRE;
-} 
+}
 
 function money(n: number) {
   return (Number(n) || 0).toLocaleString("es-MX", {
@@ -155,7 +155,7 @@ export default function NuevoCortePage() {
 
   const [session, setSession] = useState<Session>({});
   const [modo, setModo] = useState<Modo>("PDF");
-  const [turno, setTurno] = useState<TurnoCierre>("GENERAL"); 
+  const [turno, setTurno] = useState<TurnoCierre>("GENERAL");
 
   const [fecha, setFecha] = useState(() => {
     const d = new Date();
@@ -183,14 +183,6 @@ export default function NuevoCortePage() {
   useEffect(() => {
     const raw = localStorage.getItem("session");
 
-    useEffect(() => {
-      if (requiereTurno(session.sucursalId)) { 
-        setTurno("MATUTINO");
-      } else {
-        setTurno("GENERAL");
-      }
-    }, [session.sucursalId]); 
-
     if (!raw) {
       router.replace("/acceso");
       return;
@@ -215,6 +207,14 @@ export default function NuevoCortePage() {
       router.replace("/acceso");
     }
   }, [router]);
+
+  useEffect(() => {
+    if (requiereTurno(session.sucursalId)) {
+      setTurno("MATUTINO");
+    } else {
+      setTurno("GENERAL");
+    }
+  }, [session.sucursalId]);
 
   const total = useMemo(() => totalMetodos(metodos), [metodos]);
 
@@ -283,7 +283,7 @@ export default function NuevoCortePage() {
         id: uid(),
         sucursalId: session.sucursalId,
         fecha,
-        turno, 
+        turno,
         metodos: {
           efectivo: Number(metodos.efectivo ?? 0),
           tarjeta: Number(metodos.tarjeta ?? 0),
@@ -349,12 +349,12 @@ export default function NuevoCortePage() {
           <h2 style={title}>Tipo de captura</h2>
 
           <div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 12,
-  }}
-> 
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 12,
+            }}
+          >
             <button
               onClick={() => setModo("PDF")}
               style={modo === "PDF" ? modeActive : modeBtn}
@@ -376,7 +376,13 @@ export default function NuevoCortePage() {
         <section style={card}>
           <h2 style={title}>Datos generales</h2>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 12,
+            }}
+          >
             <div>
               <label style={label}>Sucursal asignada</label>
               <div style={lockedInput}>{session.sucursalId || "—"}</div>
@@ -391,43 +397,26 @@ export default function NuevoCortePage() {
                 style={input}
               />
             </div>
+
+            {requiereTurno(session.sucursalId) ? (
+              <div>
+                <label style={label}>Turno</label>
+                <select
+                  value={turno}
+                  onChange={(e) => setTurno(e.target.value as TurnoCierre)}
+                  style={input}
+                >
+                  <option value="MATUTINO">Matutino</option>
+                  <option value="VESPERTINO">Vespertino</option>
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label style={label}>Turno</label>
+                <div style={lockedInput}>General</div>
+              </div>
+            )}
           </div>
-
-          <div>
-  <label style={label}>Sucursal asignada</label>
-  <div style={lockedInput}>{session.sucursalId || "—"}</div>
-</div>
-
-<div>
-  <label style={label}>Fecha</label>
-  <input
-    type="date"
-    value={fecha}
-    onChange={(e) => setFecha(e.target.value)}
-    style={input}
-  />
-</div>
-
-{requiereTurno(session.sucursalId) ? (
-  <div>
-    <label style={label}>Turno</label>
-
-    <select
-      value={turno}
-      onChange={(e) => setTurno(e.target.value as TurnoCierre)}
-      style={input}
-    >
-      <option value="MATUTINO">Matutino</option>
-      <option value="VESPERTINO">Vespertino</option>
-    </select>
-  </div>
-) : (
-  <div>
-    <label style={label}>Turno</label>
-    <div style={lockedInput}>General</div>
-  </div>
-)}
-
         </section>
 
         {modo === "PDF" ? (
@@ -465,14 +454,22 @@ export default function NuevoCortePage() {
         <section style={card}>
           <h2 style={title}>Métodos de pago</h2>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 12,
+            }}
+          >
             {(
               ["efectivo", "tarjeta", "transferencia", "vales", "otros"] as (
                 | keyof MetodosPago
               )[]
             ).map((k) => (
               <div key={k}>
-                <label style={{ ...label, textTransform: "capitalize" }}>{k}</label>
+                <label style={{ ...label, textTransform: "capitalize" }}>
+                  {k}
+                </label>
                 <input
                   type="number"
                   value={Number(metodos[k] ?? 0)}
@@ -654,4 +651,4 @@ const saveBtn: React.CSSProperties = {
   cursor: "pointer",
   fontWeight: 900,
   fontSize: 16,
-}; 
+};
