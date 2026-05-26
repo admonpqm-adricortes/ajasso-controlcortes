@@ -154,6 +154,23 @@ function sumarCortes(cortes: Corte[]): MetodosPago {
   );
 }
 
+function abrirPdfDataUrl(dataUrl?: string, fileName = "corte.pdf") {
+  if (!dataUrl) return;
+
+  try {
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = fileName || "corte.pdf";
+    link.target = "_blank";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (e) {
+    console.error(e);
+    alert("No se pudo abrir el PDF");
+  }
+} 
+
 export default function CierreSucursalPage() {
   const router = useRouter();
 
@@ -519,7 +536,7 @@ export default function CierreSucursalPage() {
       {c.pdfDataUrl ? (
         <button
           type="button"
-          onClick={() => window.open(c.pdfDataUrl, "_blank")}
+          onClick={() => abrirPdfDataUrl(c.pdfDataUrl, c.pdfName || "corte.pdf")}
           style={smallBtn}
         >
           👁 Ver PDF
