@@ -16,6 +16,23 @@ const money = (n: number) =>
     currency: "MXN",
   });
 
+  function descargarArchivo(dataUrl?: string, fileName = "archivo.pdf") {
+    if (!dataUrl) return;
+  
+    try {
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = fileName || "archivo.pdf";
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo abrir el archivo");
+    }
+  } 
+
 type Session = {
   username?: string;
   email?: string;
@@ -339,23 +356,44 @@ export default function AdminCierreDetallePage() {
           </div>
 
           <div style={card}>
-            <h2 style={title}>Vista previa del PDF</h2>
+  <h2 style={title}>PDFs de cortes incluidos</h2>
 
-            {!cierre.pdfDataUrl ? (
-              <div style={emptyBox}>Este cierre no tiene PDF guardado.</div>
-            ) : (
-              <iframe
-                src={cierre.pdfDataUrl}
-                style={{
-                  width: "100%",
-                  height: 520,
-                  border: "1px solid #ddd",
-                  borderRadius: 16,
-                  background: "white",
-                }}
-              />
-            )}
+  {cortes.filter((c) => c.pdfDataUrl).length === 0 ? (
+    <div style={emptyBox}>
+      Este cierre no tiene PDFs de cortes relacionados.
+    </div>
+  ) : (
+    <div style={{ display: "grid", gap: 10 }}>
+      {cortes
+        .filter((c) => c.pdfDataUrl)
+        .map((c) => (
+          <div key={c.id} style={pdfRelatedCard}>
+            <div>
+              <b>{c.usuarioPdf || c.createdBy || "Corte"}</b>
+
+              <div style={{ color: "#64748b", fontSize: 13 }}>
+                {c.pdfName || "PDF del corte"}
+              </div>
+
+              <div style={{ color: "#64748b", fontSize: 13 }}>
+                Total: {money(c.total || 0)}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                descargarArchivo(c.pdfDataUrl, c.pdfName || "corte.pdf")
+              }
+              style={smallBtn}
+            >
+              👁 Abrir PDF
+            </button>
           </div>
+        ))}
+    </div>
+  )}
+</div>
         </section>
 
         {cortes.length > 0 ? (
@@ -558,4 +596,25 @@ const emptyBox: React.CSSProperties = {
   background: "#f8fafc",
   border: "1px solid #e5e7eb",
   color: "#64748b",
+};
+
+const pdfRelatedCard: React.CSSProperties = {
+  border: "1px solid #99f6e4",
+  borderRadius: 16,
+  padding: 14,
+  background: "#ecfeff",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+};
+
+const smallBtn: React.CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #99f6e4",
+  background: "white",
+  color: "#0f766e",
+  fontWeight: 800,
+  cursor: "pointer",
 };
