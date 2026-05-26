@@ -3,6 +3,7 @@ import type {
   Corte,
   DenominacionesMXN,
   MetodosPago,
+  TurnoCierre,
 } from "./types";
 
 import {
@@ -100,15 +101,20 @@ export async function saveCorte(corte: Corte) {
 
 export function getCortesPendientes(
   sucursalId: string,
-  fecha: string
+  fecha: string,
+  turno?: TurnoCierre
 ): Corte[] {
-  return getCortes().filter(
-    (c) =>
+  return getCortes().filter((c) => {
+    const turnoCorte = c.turno || "GENERAL";
+
+    return (
       c.sucursalId === sucursalId &&
       c.fecha === fecha &&
-      c.status === "ABIERTO"
-  );
-}
+      c.status === "ABIERTO" &&
+      (!turno || turnoCorte === turno)
+    );
+  });
+} 
 
 export function cerrarCortes(ids: string[]) {
   const idSet = new Set(ids);
@@ -145,11 +151,21 @@ export async function saveCierre(cierre: CierreDia) {
   await restSetDoc("cierres", cierre.id, payload);
 }
 
-export function existeCierre(sucursalId: string, fecha: string) {
-  return getCierres().some(
-    (c) => c.sucursalId === sucursalId && c.fecha === fecha
-  );
-}
+export function existeCierre(
+  sucursalId: string,
+  fecha: string,
+  turno: TurnoCierre = "GENERAL"
+) {
+  return getCierres().some((c) => {
+    const turnoCierre = c.turno || "GENERAL";
+
+    return (
+      c.sucursalId === sucursalId &&
+      c.fecha === fecha &&
+      turnoCierre === turno
+    );
+  });
+} 
 
 export function updateCierre(cierreId: string, patch: Partial<CierreDia>) {
   const all = getCierres();
@@ -251,6 +267,7 @@ export function totalMetodos(m: MetodosPago) {
 export async function crearCierre(input: {
   sucursalId: string;
   fecha: string;
+  turno?: TurnoCierre;
   bolsaFinal: number;
   denominaciones?: DenominacionesMXN;
   observaciones?: string;
@@ -261,12 +278,15 @@ export async function crearCierre(input: {
   voucherName?: string;
   voucherDataUrl?: string;
   saldoSobranteAnterior?: number;
-}) {
-  if (existeCierre(input.sucursalId, input.fecha)) {
-    throw new Error("Ya existe un cierre para esta fecha");
-  }
+}) { 
 
-  const cortes = getCortesPendientes(input.sucursalId, input.fecha);
+  const turno = input.turno || "GENERAL";
+
+  if (existeCierre(input.sucursalId, input.fecha, turno)) {
+    throw new Error("Ya existe un cierre para esta fecha y turno");
+  } 
+
+  const cortes = getCortesPendientes(input.sucursalId, input.fecha, turno);
 
   let totalesPorMetodo: MetodosPago = {
     efectivo: 0,
@@ -345,6 +365,7 @@ export async function crearCierre(input: {
     id: uid(),
     sucursalId: input.sucursalId,
     fecha: input.fecha,
+    turno, 
     cortesIds,
     totalesPorMetodo,
     totalEsperado,
