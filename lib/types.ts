@@ -1,5 +1,7 @@
 export type Role = "ADMIN" | "SUPERVISOR" | "SUCURSAL";
 
+export type TurnoCierre = "GENERAL" | "MATUTINO" | "VESPERTINO";
+
 export type Session = {
   username: string;
   role: Role;
@@ -19,6 +21,7 @@ export type Corte = {
   id: string;
   sucursalId: string;
   fecha: string;
+  turno?: TurnoCierre;
   metodos: MetodosPago;
   total: number;
   status: "ABIERTO" | "CERRADO";
@@ -56,6 +59,7 @@ export type CierreDia = {
   id: string;
   sucursalId: string;
   fecha: string;
+  turno?: TurnoCierre;
   cortesIds: string[];
   totalesPorMetodo: MetodosPago;
   totalEsperado: number;
