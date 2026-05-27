@@ -55,6 +55,22 @@ function configFromEmail(email: string): {
     };
   }
 
+  if (e === "sucursal.torre2@proquimed.com.mx") {
+    return {
+      username: "TORRE II",
+      role: "SUCURSAL",
+      sucursalId: "D-TORRE II",
+    };
+  }
+  
+  if (e === "servicioalcliente2@proquimed.com.mx") {
+    return {
+      username: "SALUD OCUPACIONAL",
+      role: "SUCURSAL",
+      sucursalId: "K-SALUD OCUPACIONAL",
+    };
+  } 
+
   throw new Error("Usuario sin rol asignado");
 }
 
