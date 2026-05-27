@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import type { DenominacionesMXN, MetodosPago, Corte } from "@/lib/types";
+import type {
+  DenominacionesMXN,
+  MetodosPago,
+  Corte,
+  TurnoCierre,
+} from "@/lib/types";
 import {
   crearCierre,
   getCortesPendientes,
@@ -22,6 +27,12 @@ declare global {
 const PDFJS_VERSION = "3.11.174";
 const PDFJS_SRC = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.min.js`;
 const PDFJS_WORKER = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
+
+const SUCURSAL_DOBLE_CIERRE = "M-MEDICA CAMPESTRE";
+
+function requiereTurno(sucursalId?: string) {
+  return sucursalId === SUCURSAL_DOBLE_CIERRE;
+}
 
 function money(n: number) {
   return (Number(n) || 0).toLocaleString("es-MX", {
@@ -43,6 +54,11 @@ type Session = {
   username?: string;
   role?: string;
   sucursalId?: string;
+};
+
+type VoucherPreview = {
+  name: string;
+  dataUrl: string;
 };
 
 async function ensurePdfJs() {
@@ -169,7 +185,7 @@ function abrirPdfDataUrl(dataUrl?: string, fileName = "corte.pdf") {
     console.error(e);
     alert("No se pudo abrir el PDF");
   }
-} 
+}
 
 export default function CierreSucursalPage() {
   const router = useRouter();
@@ -183,9 +199,8 @@ export default function CierreSucursalPage() {
   const [saldoSobranteAnterior, setSaldoSobranteAnterior] = useState(0);
   const [guardando, setGuardando] = useState(false);
 
-  const [voucherFile, setVoucherFile] = useState<File | null>(null);
-  const [voucherName, setVoucherName] = useState("");
-  const [voucherPreview, setVoucherPreview] = useState("");
+  const [voucherFiles, setVoucherFiles] = useState<File[]>([]);
+  const [voucherPreviews, setVoucherPreviews] = useState<VoucherPreview[]>([]);
 
   const [fechaYMD, setFechaYMD] = useState(() => {
     const d = new Date();
@@ -194,6 +209,8 @@ export default function CierreSucursalPage() {
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
   });
+
+  const [turno, setTurno] = useState<TurnoCierre>("GENERAL");
 
   const [cortesPendientes, setCortesPendientes] = useState<Corte[]>([]);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -244,6 +261,12 @@ export default function CierreSucursalPage() {
 
       setSession(parsed);
       setSucursal(parsed.sucursalId);
+
+      if (requiereTurno(parsed.sucursalId)) {
+        setTurno("MATUTINO");
+      } else {
+        setTurno("GENERAL");
+      }
     } catch {
       router.replace("/acceso");
     }
@@ -254,7 +277,7 @@ export default function CierreSucursalPage() {
       if (!sucursal) return;
 
       setPdfError("");
-      const pendientes = getCortesPendientes(sucursal, fechaYMD);
+      const pendientes = getCortesPendientes(sucursal, fechaYMD, turno);
       setCortesPendientes(pendientes || []);
       setSaldoSobranteAnterior(getSaldoSobranteSucursal(sucursal));
     } catch (e: any) {
@@ -265,7 +288,7 @@ export default function CierreSucursalPage() {
 
   useEffect(() => {
     recargar();
-  }, [sucursal, fechaYMD]);
+  }, [sucursal, fechaYMD, turno]);
 
   async function onPickPdf(file: File | null) {
     setPdfError("");
@@ -313,23 +336,28 @@ export default function CierreSucursalPage() {
     }
   }
 
-  async function onPickVoucher(file: File | null) {
-    if (!file) {
-      setVoucherFile(null);
-      setVoucherName("");
-      setVoucherPreview("");
+  async function onPickVoucher(files: FileList | null) {
+    if (!files || files.length === 0) {
+      setVoucherFiles([]);
+      setVoucherPreviews([]);
       return;
     }
 
-    setVoucherFile(file);
-    setVoucherName(file.name);
+    const arr = Array.from(files);
+    setVoucherFiles(arr);
 
     try {
-      const dataUrl = await fileToBase64(file);
-      setVoucherPreview(dataUrl);
+      const previews = await Promise.all(
+        arr.map(async (f) => ({
+          name: f.name,
+          dataUrl: await fileToBase64(f),
+        }))
+      );
+
+      setVoucherPreviews(previews);
     } catch (e) {
       console.error(e);
-      setVoucherPreview("");
+      setVoucherPreviews([]);
     }
   }
 
@@ -382,9 +410,9 @@ export default function CierreSucursalPage() {
         );
       }
 
-      if ((totalesBase.tarjeta || 0) > 0 && !voucherFile) {
+      if ((totalesBase.tarjeta || 0) > 0 && voucherFiles.length === 0) {
         throw new Error(
-          "Este cierre tiene tarjeta. Debes subir la imagen del voucher antes de guardar."
+          "Este cierre tiene tarjeta. Debes subir al menos una imagen de voucher antes de guardar."
         );
       }
 
@@ -395,14 +423,18 @@ export default function CierreSucursalPage() {
         pdfDataUrl = await fileToBase64(pdfFile);
       }
 
-      let voucherDataUrl: string | undefined;
-      if (voucherFile) {
-        voucherDataUrl = await fileToBase64(voucherFile);
-      }
+      const vouchers =
+        voucherPreviews.length > 0
+          ? voucherPreviews.map((v) => ({
+              name: v.name,
+              dataUrl: v.dataUrl,
+            }))
+          : undefined;
 
       await crearCierre({
         sucursalId: sucursal,
         fecha: fechaYMD,
+        turno,
         bolsaFinal: Number(bolsaFinal || 0),
         denominaciones: capturarDenoms ? denoms : undefined,
         observaciones: hayCortesPendientes
@@ -414,13 +446,11 @@ export default function CierreSucursalPage() {
         pdfName: pdfFile?.name,
         pdfDataUrl,
         totalesPdf: hayCortesPendientes ? undefined : totalesBase,
-        voucherName: voucherFile?.name,
-        voucherDataUrl,
+        vouchers,
         saldoSobranteAnterior,
       });
 
       alert("Cierre guardado ✅");
-
       router.push("/sucursal");
     } catch (e: any) {
       console.error(e);
@@ -473,6 +503,25 @@ export default function CierreSucursalPage() {
                 style={input}
               />
             </div>
+
+            {requiereTurno(sucursal) ? (
+              <div>
+                <label style={label}>Turno de cierre</label>
+                <select
+                  value={turno}
+                  onChange={(e) => setTurno(e.target.value as TurnoCierre)}
+                  style={input}
+                >
+                  <option value="MATUTINO">Matutino</option>
+                  <option value="VESPERTINO">Vespertino</option>
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label style={label}>Turno de cierre</label>
+                <div style={lockedInput}>General</div>
+              </div>
+            )}
           </div>
 
           <button onClick={recargar} style={{ ...backBtn, marginTop: 12 }}>
@@ -494,8 +543,8 @@ export default function CierreSucursalPage() {
             label="Voucher"
             value={
               (totalesBase.tarjeta || 0) > 0
-                ? voucherFile
-                  ? "Cargado"
+                ? voucherFiles.length > 0
+                  ? `${voucherFiles.length} cargado(s)`
                   : "Pendiente"
                 : "No aplica"
             }
@@ -507,46 +556,67 @@ export default function CierreSucursalPage() {
 
           {cortesPendientes.length === 0 ? (
             <div style={warningBox}>
-              No hay cortes pendientes para esta fecha. Puedes subir un PDF de
-              respaldo para generar el cierre.
+              No hay cortes pendientes para esta fecha y turno. Puedes subir un
+              PDF de respaldo para generar el cierre.
             </div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
-{cortesPendientes.map((c, idx) => (
-  <div key={c.id || idx} style={corteCard}>
-    <div>
-      <b>{c.usuarioPdf || c.createdBy || "Corte"}</b>
+              {cortesPendientes.map((c, idx) => (
+                <div key={c.id || idx} style={corteCard}>
+                  <div>
+                    <b>{c.usuarioPdf || c.createdBy || "Corte"}</b>
 
-      <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>
-        {c.id} · {c.status}
-      </div>
+                    <div
+                      style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}
+                    >
+                      {c.id} · {c.status} · {c.turno || "GENERAL"}
+                    </div>
 
-      {c.pdfName ? (
-        <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>
-          📄 {c.pdfName}
-        </div>
-      ) : null}
-    </div>
+                    {c.pdfName ? (
+                      <div
+                        style={{
+                          color: "#64748b",
+                          fontSize: 13,
+                          marginTop: 4,
+                        }}
+                      >
+                        📄 {c.pdfName}
+                      </div>
+                    ) : null}
+                  </div>
 
-    <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
-      <div style={{ fontWeight: 900, color: "#0f766e", fontSize: 18 }}>
-        {money(c.total || 0)}
-      </div>
+                  <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                    <div
+                      style={{
+                        fontWeight: 900,
+                        color: "#0f766e",
+                        fontSize: 18,
+                      }}
+                    >
+                      {money(c.total || 0)}
+                    </div>
 
-      {c.pdfDataUrl ? (
-        <button
-          type="button"
-          onClick={() => abrirPdfDataUrl(c.pdfDataUrl, c.pdfName || "corte.pdf")}
-          style={smallBtn}
-        >
-          👁 Ver PDF
-        </button>
-      ) : (
-        <span style={{ color: "#94a3b8", fontSize: 12 }}>Sin PDF</span>
-      )}
-    </div>
-  </div>
-))}
+                    {c.pdfDataUrl ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          abrirPdfDataUrl(
+                            c.pdfDataUrl,
+                            c.pdfName || "corte.pdf"
+                          )
+                        }
+                        style={smallBtn}
+                      >
+                        👁 Ver PDF
+                      </button>
+                    ) : (
+                      <span style={{ color: "#94a3b8", fontSize: 12 }}>
+                        Sin PDF
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -587,36 +657,47 @@ export default function CierreSucursalPage() {
         </section>
 
         <section style={card}>
-          <h2 style={title}>Voucher terminal</h2>
+          <h2 style={title}>Vouchers terminal</h2>
 
           <div style={{ marginBottom: 8, color: "#555" }}>
             {(totalesBase.tarjeta || 0) > 0
-              ? "Este cierre tiene tarjeta. Debes subir la imagen del voucher."
+              ? "Este cierre tiene tarjeta. Puedes subir uno o varios vouchers."
               : "Este cierre no tiene tarjeta. Puedes dejarlo vacío."}
           </div>
 
           <input
             type="file"
+            multiple
             accept="image/*"
-            onChange={(e) => onPickVoucher(e.target.files?.[0] || null)}
+            onChange={(e) => onPickVoucher(e.target.files)}
           />
 
           <div style={{ marginTop: 8 }}>
-            <b>Archivo:</b> {voucherName || "—"}
+            <b>Archivos:</b>{" "}
+            {voucherFiles.length > 0
+              ? voucherFiles.map((x) => x.name).join(", ")
+              : "—"}
           </div>
 
-          {voucherPreview ? (
-            <img
-              src={voucherPreview}
-              alt="Vista previa voucher"
-              style={{
-                marginTop: 12,
-                maxWidth: "100%",
-                maxHeight: 260,
-                border: "1px solid #ddd",
-                borderRadius: 14,
-              }}
-            />
+          {voucherPreviews.length > 0 ? (
+            <div style={voucherGrid}>
+              {voucherPreviews.map((v, idx) => (
+                <div key={`${v.name}-${idx}`} style={voucherCard}>
+                  <div style={voucherNameStyle}>{v.name}</div>
+
+                  <img
+                    src={v.dataUrl}
+                    alt={v.name}
+                    style={{
+                      width: "100%",
+                      maxHeight: 220,
+                      objectFit: "contain",
+                      borderRadius: 10,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
           ) : null}
         </section>
 
@@ -891,6 +972,28 @@ const denomGrid: React.CSSProperties = {
   gap: 12,
 };
 
+const voucherGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+  marginTop: 14,
+};
+
+const voucherCard: React.CSSProperties = {
+  border: "1px solid #ddd",
+  borderRadius: 14,
+  padding: 10,
+  background: "#fff",
+};
+
+const voucherNameStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 800,
+  marginBottom: 8,
+  color: "#475569",
+  wordBreak: "break-word",
+};
+
 const label: React.CSSProperties = {
   display: "block",
   fontWeight: 900,
@@ -982,7 +1085,7 @@ const warningBox: React.CSSProperties = {
   padding: 12,
   borderRadius: 14,
   background: "#fff7ed",
-  border: "1px solid #fed7aa", 
+  border: "1px solid #fed7aa",
   color: "#9a3412",
   fontWeight: 800,
 };
@@ -1008,7 +1111,7 @@ const saveBtn: React.CSSProperties = {
   color: "white",
   cursor: "pointer",
   fontWeight: 900,
-  fontSize: 16, 
+  fontSize: 16,
 };
 
 const smallBtn: React.CSSProperties = {
@@ -1019,4 +1122,4 @@ const smallBtn: React.CSSProperties = {
   color: "#0f766e",
   fontWeight: 800,
   cursor: "pointer",
-};
+}; 

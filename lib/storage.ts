@@ -275,10 +275,12 @@ export async function crearCierre(input: {
   totalesPdf?: MetodosPago;
   pdfName?: string;
   pdfDataUrl?: string;
-  voucherName?: string;
-  voucherDataUrl?: string;
+  vouchers?: {
+    name: string;
+    dataUrl: string;
+  }[];
   saldoSobranteAnterior?: number;
-}) { 
+}) {
 
   const turno = input.turno || "GENERAL";
 
@@ -384,9 +386,13 @@ export async function crearCierre(input: {
     createdBy: input.createdBy,
     pdfName: input.pdfName,
     pdfDataUrl: input.pdfDataUrl,
-    voucherName: input.voucherName,
-    voucherDataUrl: input.voucherDataUrl,
-    revisado: false,
+
+    vouchers: input.vouchers?.map((v) => ({
+      name: v.name,
+      dataUrl: v.dataUrl,
+    })),
+
+    revisado: false, 
     saldoSobranteAnterior,
     efectivoNetoRequerido,
     sobranteCorte,
@@ -440,4 +446,4 @@ export async function sincronizarDesdeFirebase() {
       cortes: getCortes(),
     };
   }
-}
+} 

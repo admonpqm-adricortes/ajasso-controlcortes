@@ -16,27 +16,27 @@ const money = (n: number) =>
     currency: "MXN",
   });
 
-  function descargarArchivo(dataUrl?: string, fileName = "archivo.pdf") {
-    if (!dataUrl) return;
-  
-    try {
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = fileName || "archivo.pdf";
-      link.target = "_blank";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo abrir el archivo");
-    }
-  } 
+function descargarArchivo(dataUrl?: string, fileName = "archivo") {
+  if (!dataUrl) return;
+
+  try {
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = fileName;
+    link.target = "_blank";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (e) {
+    console.error(e);
+    alert("No se pudo abrir el archivo");
+  }
+}
 
 type Session = {
   username?: string;
   email?: string;
-  role?: "ADMIN" | "SUPERVISOR" | "SUCURSAL";
+  role?: "ADMIN" | "SUPERVISOR" | "CONSULTA" | "SUCURSAL";
 };
 
 export default function AdminCierreDetallePage() {
@@ -50,7 +50,8 @@ export default function AdminCierreDetallePage() {
   const [loading, setLoading] = useState(false);
 
   const esAdmin = session.role === "ADMIN";
-  const esSupervisor = session.role === "SUPERVISOR";
+  const esConsulta =
+    session.role === "SUPERVISOR" || session.role === "CONSULTA";
 
   function cargar() {
     const raw = localStorage.getItem("session");
@@ -61,7 +62,11 @@ export default function AdminCierreDetallePage() {
 
     const s = JSON.parse(raw) as Session;
 
-    if (s.role !== "ADMIN" && s.role !== "SUPERVISOR") {
+    if (
+      s.role !== "ADMIN" &&
+      s.role !== "SUPERVISOR" &&
+      s.role !== "CONSULTA"
+    ) {
       router.replace("/sucursal");
       return;
     }
@@ -166,13 +171,15 @@ export default function AdminCierreDetallePage() {
             </h1>
 
             <div style={{ color: "#4b5563" }}>
-              <b>{cierre.sucursalId}</b> · {cierre.fecha} · Cierre #
-              {cierre.id.slice(-6)}
+              <b>{cierre.sucursalId}</b> · {cierre.fecha} ·{" "}
+              {cierre.turno || "GENERAL"} · Cierre #{cierre.id.slice(-6)}
             </div>
           </div>
         </header>
 
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 18 }}>
+        <div
+          style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 18 }}
+        >
           <button onClick={() => router.push("/admin/cierres")} style={btn}>
             ← Volver a cierres
           </button>
@@ -184,7 +191,9 @@ export default function AdminCierreDetallePage() {
               style={{
                 ...btn,
                 background: cierre.revisado ? "#fff7ed" : "#ecfeff",
-                border: cierre.revisado ? "1px solid #fed7aa" : "1px solid #99f6e4",
+                border: cierre.revisado
+                  ? "1px solid #fed7aa"
+                  : "1px solid #99f6e4",
                 color: cierre.revisado ? "#9a3412" : "#0f766e",
               }}
             >
@@ -193,9 +202,9 @@ export default function AdminCierreDetallePage() {
           ) : null}
         </div>
 
-        {esSupervisor ? (
+        {esConsulta ? (
           <div style={supervisorBox}>
-            Modo supervisor: puedes consultar este cierre, pero no modificarlo.
+            Modo consulta: puedes revisar la información, pero no modificarla.
           </div>
         ) : null}
 
@@ -205,7 +214,7 @@ export default function AdminCierreDetallePage() {
             label="Fecha de creación"
             value={new Date(cierre.createdAt).toLocaleString("es-MX")}
           />
-          <MiniCard label="PDF" value={cierre.pdfName || "—"} />
+          <MiniCard label="Turno" value={cierre.turno || "GENERAL"} />
           <MiniCard
             label="Revisado por"
             value={cierre.revisadoBy || "Pendiente"}
@@ -216,8 +225,14 @@ export default function AdminCierreDetallePage() {
           <h2 style={title}>Totales</h2>
 
           <div style={totalsGrid}>
-            <Amount label="Efectivo" value={cierre.totalesPorMetodo.efectivo ?? 0} />
-            <Amount label="Tarjeta" value={cierre.totalesPorMetodo.tarjeta ?? 0} />
+            <Amount
+              label="Efectivo"
+              value={cierre.totalesPorMetodo.efectivo ?? 0}
+            />
+            <Amount
+              label="Tarjeta"
+              value={cierre.totalesPorMetodo.tarjeta ?? 0}
+            />
             <Amount
               label="Transferencia"
               value={cierre.totalesPorMetodo.transferencia ?? 0}
@@ -226,7 +241,11 @@ export default function AdminCierreDetallePage() {
             <Amount label="Otros" value={cierre.totalesPorMetodo.otros ?? 0} />
             <Amount label="Total esperado" value={cierre.totalEsperado} strong />
             <Amount label="Bolsa final" value={cierre.bolsaFinal} strong />
-            <Amount label="Diferencia" value={cierre.diferencia} danger={cierre.diferencia !== 0} />
+            <Amount
+              label="Diferencia"
+              value={cierre.diferencia}
+              danger={cierre.diferencia !== 0}
+            />
           </div>
 
           {cierre.observaciones ? (
@@ -287,7 +306,9 @@ export default function AdminCierreDetallePage() {
                         background: used ? "#ecfeff" : "white",
                       }}
                     >
-                      <div style={{ fontWeight: used ? 900 : 500 }}>{r.label}</div>
+                      <div style={{ fontWeight: used ? 900 : 500 }}>
+                        {r.label}
+                      </div>
 
                       <div>
                         <span
@@ -329,71 +350,72 @@ export default function AdminCierreDetallePage() {
 
         <section style={twoColumns}>
           <div style={card}>
-            <h2 style={title}>Voucher terminal</h2>
+            <h2 style={title}>Vouchers terminal</h2>
 
-            {!cierre.voucherDataUrl ? (
+            {!cierre.vouchers || cierre.vouchers.length === 0 ? (
               <div style={emptyBox}>Este cierre no capturó voucher terminal.</div>
             ) : (
-              <>
-                {cierre.voucherName ? (
-                  <div style={{ marginBottom: 10 }}>
-                    <b>Archivo:</b> {cierre.voucherName}
-                  </div>
-                ) : null}
+              <div style={voucherGrid}>
+                {cierre.vouchers.map((v, idx) => (
+                  <div key={`${v.name}-${idx}`} style={voucherCard}>
+                    <div style={voucherNameStyle}>{v.name}</div>
 
-                <img
-                  src={cierre.voucherDataUrl}
-                  alt="Voucher terminal"
-                  style={{
-                    width: "100%",
-                    maxWidth: 420,
-                    borderRadius: 16,
-                    border: "1px solid #ddd",
-                  }}
-                />
-              </>
+                    <img
+                      src={v.dataUrl}
+                      alt={v.name}
+                      style={{
+                        width: "100%",
+                        maxHeight: 260,
+                        objectFit: "contain",
+                        borderRadius: 12,
+                        border: "1px solid #e5e7eb",
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
           <div style={card}>
-  <h2 style={title}>PDFs de cortes incluidos</h2>
+            <h2 style={title}>PDFs de cortes incluidos</h2>
 
-  {cortes.filter((c) => c.pdfDataUrl).length === 0 ? (
-    <div style={emptyBox}>
-      Este cierre no tiene PDFs de cortes relacionados.
-    </div>
-  ) : (
-    <div style={{ display: "grid", gap: 10 }}>
-      {cortes
-        .filter((c) => c.pdfDataUrl)
-        .map((c) => (
-          <div key={c.id} style={pdfRelatedCard}>
-            <div>
-              <b>{c.usuarioPdf || c.createdBy || "Corte"}</b>
-
-              <div style={{ color: "#64748b", fontSize: 13 }}>
-                {c.pdfName || "PDF del corte"}
+            {cortes.filter((c) => c.pdfDataUrl).length === 0 ? (
+              <div style={emptyBox}>
+                Este cierre no tiene PDFs de cortes relacionados.
               </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {cortes
+                  .filter((c) => c.pdfDataUrl)
+                  .map((c) => (
+                    <div key={c.id} style={pdfRelatedCard}>
+                      <div>
+                        <b>{c.usuarioPdf || c.createdBy || "Corte"}</b>
 
-              <div style={{ color: "#64748b", fontSize: 13 }}>
-                Total: {money(c.total || 0)}
+                        <div style={{ color: "#64748b", fontSize: 13 }}>
+                          {c.pdfName || "PDF del corte"}
+                        </div>
+
+                        <div style={{ color: "#64748b", fontSize: 13 }}>
+                          Total: {money(c.total || 0)}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          descargarArchivo(c.pdfDataUrl, c.pdfName || "corte.pdf")
+                        }
+                        style={smallBtn}
+                      >
+                        👁 Abrir PDF
+                      </button>
+                    </div>
+                  ))}
               </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                descargarArchivo(c.pdfDataUrl, c.pdfName || "corte.pdf")
-              }
-              style={smallBtn}
-            >
-              👁 Abrir PDF
-            </button>
+            )}
           </div>
-        ))}
-    </div>
-  )}
-</div>
         </section>
 
         {cortes.length > 0 ? (
@@ -403,10 +425,21 @@ export default function AdminCierreDetallePage() {
             <div style={{ display: "grid", gap: 8 }}>
               {cortes.map((c) => (
                 <div key={c.id} style={relatedCard}>
-                  <div><b>Corte:</b> {c.id}</div>
-                  <div><b>Fecha:</b> {c.fecha}</div>
-                  <div><b>Total:</b> {money(c.total)}</div>
-                  <div><b>Status:</b> {c.status}</div>
+                  <div>
+                    <b>Corte:</b> {c.id}
+                  </div>
+                  <div>
+                    <b>Fecha:</b> {c.fecha}
+                  </div>
+                  <div>
+                    <b>Turno:</b> {c.turno || "GENERAL"}
+                  </div>
+                  <div>
+                    <b>Total:</b> {money(c.total)}
+                  </div>
+                  <div>
+                    <b>Status:</b> {c.status}
+                  </div>
                 </div>
               ))}
             </div>
@@ -607,6 +640,27 @@ const pdfRelatedCard: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 12,
   alignItems: "center",
+};
+
+const voucherGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+};
+
+const voucherCard: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  padding: 10,
+  background: "#fff",
+};
+
+const voucherNameStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 800,
+  marginBottom: 8,
+  color: "#475569",
+  wordBreak: "break-word",
 };
 
 const smallBtn: React.CSSProperties = {

@@ -73,8 +73,10 @@ export type CierreDia = {
   pdfName?: string;
   pdfDataUrl?: string;
 
-  voucherName?: string;
-  voucherDataUrl?: string;
+  vouchers?: {
+    name: string;
+    dataUrl: string;
+  }[];
 
   revisado: boolean;
   revisadoBy?: string;
