@@ -32,11 +32,11 @@ function configFromEmail(email: string): {
   }
 
   if (e === "contabilidad@proquimed.com.mx") {
-    return { username: "CONSULTA 1", role: "SUPERVISOR" };
+    return { username: "CONTABILIDAD", role: "SUPERVISOR" };
   }
 
   if (e === "sucesor.navarro@proquimed.com.mx") {
-    return { username: "CONSULTA 2", role: "SUPERVISOR" };
+    return { username: "AUDITORIA", role: "SUPERVISOR" };
   }
 
   if (e === "sucursal.mc@proquimed.com.mx") {
