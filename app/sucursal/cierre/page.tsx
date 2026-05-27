@@ -657,49 +657,76 @@ export default function CierreSucursalPage() {
         </section>
 
         <section style={card}>
-          <h2 style={title}>Vouchers terminal</h2>
+  <h2 style={title}>Vouchers terminal</h2>
 
-          <div style={{ marginBottom: 8, color: "#555" }}>
-            {(totalesBase.tarjeta || 0) > 0
-              ? "Este cierre tiene tarjeta. Puedes subir uno o varios vouchers."
-              : "Este cierre no tiene tarjeta. Puedes dejarlo vacío."}
+  <div style={{ marginBottom: 8, color: "#555" }}>
+    {(totalesBase.tarjeta || 0) > 0
+      ? "Este cierre tiene tarjeta. Debes subir al menos un voucher."
+      : "Este cierre no tiene tarjeta. Puedes dejarlo vacío."}
+  </div>
+
+  <input
+    type="file"
+    accept="image/*"
+    multiple
+    onChange={(e) => onPickVoucher(e.target.files)}
+  />
+
+  <div style={{ marginTop: 10 }}>
+    <b>Archivos seleccionados:</b>
+  </div>
+
+  {voucherPreviews.length === 0 ? (
+    <div style={{ color: "#64748b", marginTop: 6 }}>
+      No hay vouchers cargados
+    </div>
+  ) : (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 12,
+        marginTop: 12,
+      }}
+    >
+      {voucherPreviews.map((v, idx) => (
+        <div
+          key={`${v.name}-${idx}`}
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: 14,
+            padding: 10,
+            background: "#fff",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 800,
+              marginBottom: 8,
+              color: "#312e81",
+              wordBreak: "break-word",
+            }}
+          >
+            {v.name}
           </div>
 
-          <input
-            type="file"
-            multiple
-            accept="image/*"
-            onChange={(e) => onPickVoucher(e.target.files)}
+          <img
+            src={v.dataUrl}
+            alt={v.name}
+            style={{
+              width: "100%",
+              maxHeight: 220,
+              objectFit: "contain",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+            }}
           />
-
-          <div style={{ marginTop: 8 }}>
-            <b>Archivos:</b>{" "}
-            {voucherFiles.length > 0
-              ? voucherFiles.map((x) => x.name).join(", ")
-              : "—"}
-          </div>
-
-          {voucherPreviews.length > 0 ? (
-            <div style={voucherGrid}>
-              {voucherPreviews.map((v, idx) => (
-                <div key={`${v.name}-${idx}`} style={voucherCard}>
-                  <div style={voucherNameStyle}>{v.name}</div>
-
-                  <img
-                    src={v.dataUrl}
-                    alt={v.name}
-                    style={{
-                      width: "100%",
-                      maxHeight: 220,
-                      objectFit: "contain",
-                      borderRadius: 10,
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </section>
+        </div>
+      ))}
+    </div>
+  )}
+</section>
 
         <section style={card}>
           <h2 style={title}>Bolsa final y efectivo</h2>
