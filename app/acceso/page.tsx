@@ -31,6 +31,14 @@ function configFromEmail(email: string): {
     return { username: "TESORERIA", role: "SUPERVISOR" };
   }
 
+  if (e === "contabilidad@proquimed.com.mx") {
+    return { username: "CONSULTA 1", role: "SUPERVISOR" };
+  }
+
+  if (e === "sucesor.navarro@proquimed.com.mx") {
+    return { username: "CONSULTA 2", role: "SUPERVISOR" };
+  }
+
   if (e === "sucursal.mc@proquimed.com.mx") {
     return {
       username: "MEDICA CAMPESTRE",
