@@ -904,6 +904,7 @@ export default function AdminCierresPage() {
                   <tr>
                     <th style={th}>Fecha de corte</th>
                     <th style={th}>Sucursal</th>
+                    <th style={th}>Turno</th>
                     <th style={th}>Monto total</th>
                     <th style={th}>Importes tarjetas</th>
                     <th style={th}>Importes transferencias</th>
@@ -919,6 +920,11 @@ export default function AdminCierresPage() {
                     <tr key={r.id}>
                       <td style={td}>{r.fecha}</td>
                       <td style={td}>{r.sucursal}</td>
+                      <td style={td}>
+  <span style={turnoBadge}>
+    {r.turno || "GENERAL"}
+  </span>
+</td>
                       <td style={tdMoney}>{money(r.total)}</td>
                       <td style={tdMoney}>{money(r.tarjetas)}</td>
                       <td style={tdMoney}>{money(r.transferencias)}</td>
@@ -1169,4 +1175,15 @@ const tdMoneyTotal: React.CSSProperties = {
   background: "#fafafa",
   textAlign: "right",
   whiteSpace: "nowrap",
+}; 
+
+const turnoBadge: React.CSSProperties = {
+  display: "inline-flex",
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "#ecfeff",
+  color: "#0f766e",
+  border: "1px solid #99f6e4",
+  fontWeight: 900,
+  fontSize: 12,
 };
