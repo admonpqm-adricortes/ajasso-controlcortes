@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sincronizarDesdeFirebase } from "../../lib/storage";
 
-type Role = "ADMIN" | "SUPERVISOR" | "SUCURSAL";
+type Role = "ADMIN" | "SUPERVISOR" | "CONSULTA" | "SUCURSAL";
 
 type Session = {
   username: string;
@@ -39,7 +39,11 @@ export default function AdminPage() {
     try {
       const s = JSON.parse(raw) as Session;
 
-      if (s.role !== "ADMIN" && s.role !== "SUPERVISOR") {
+      if (
+        s.role !== "ADMIN" &&
+        s.role !== "SUPERVISOR" &&
+        s.role !== "CONSULTA"
+      ) {
         router.replace("/sucursal");
         return;
       }
@@ -66,8 +70,8 @@ export default function AdminPage() {
 
   if (!session) return null;
 
-  const esSupervisor = session.role === "SUPERVISOR";
   const esAdmin = session.role === "ADMIN";
+  const esConsulta = session.role === "SUPERVISOR" || session.role === "CONSULTA";
 
   return (
     <main
@@ -121,17 +125,15 @@ export default function AdminPage() {
                 display: "inline-flex",
                 padding: "6px 12px",
                 borderRadius: 999,
-                background: esSupervisor ? "#eff6ff" : "#ecfeff",
-                color: esSupervisor ? "#1d4ed8" : "#0f766e",
-                border: esSupervisor
-                  ? "1px solid #bfdbfe"
-                  : "1px solid #99f6e4",
+                background: esConsulta ? "#eff6ff" : "#ecfeff",
+                color: esConsulta ? "#1d4ed8" : "#0f766e",
+                border: esConsulta ? "1px solid #bfdbfe" : "1px solid #99f6e4",
                 fontWeight: 900,
                 fontSize: 13,
                 marginBottom: 10,
               }}
             >
-              {esSupervisor ? "Modo supervisión" : "Modo administración"}
+              {esConsulta ? "Modo consulta" : "Modo administración"}
             </div>
 
             <h1
@@ -142,7 +144,7 @@ export default function AdminPage() {
                 lineHeight: 1.05,
               }}
             >
-              {esSupervisor ? "Panel Supervisor" : "Panel Admin"}
+              {esConsulta ? "Panel Consulta" : "Panel Admin"}
             </h1>
 
             <p style={{ margin: "8px 0 0", color: "#4b5563", fontSize: 16 }}>
@@ -168,7 +170,7 @@ export default function AdminPage() {
           />
         </section>
 
-        {esSupervisor ? (
+        {esConsulta ? (
           <section
             style={{
               marginTop: 18,
@@ -201,6 +203,19 @@ export default function AdminPage() {
             <span>
               <strong>Ver cierres</strong>
               <small>Historial, PDFs, vouchers y exportaciones</small>
+            </span>
+          </button>
+
+          <button
+            onClick={() => router.push("/admin/cortes")}
+            style={actionCard}
+          >
+            <span style={iconBubble}>📄</span>
+            <span>
+              <strong>Administrar cortes</strong>
+              <small>
+                Consultar cortes, abrir PDFs y eliminar cortes abiertos
+              </small>
             </span>
           </button>
 

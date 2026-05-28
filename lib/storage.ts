@@ -7,6 +7,7 @@ import type {
 } from "./types";
 
 import {
+  restDeleteDoc,
   restGetCollection,
   restSetDoc,
   restUpdateDoc,
@@ -114,7 +115,7 @@ export function getCortesPendientes(
       (!turno || turnoCorte === turno)
     );
   });
-} 
+}
 
 export function cerrarCortes(ids: string[]) {
   const idSet = new Set(ids);
@@ -130,6 +131,42 @@ export function cerrarCortes(ids: string[]) {
       console.error("Error cerrando corte en Firebase:", e)
     );
   });
+}
+
+export async function eliminarCorte(params: {
+  corteId: string;
+  username: string;
+  role?: string;
+}) {
+  if (params.role !== "ADMIN") {
+    throw new Error("Solo ADMIN puede eliminar cortes.");
+  }
+
+  const cortes = getCortes();
+  const corte = cortes.find((c) => c.id === params.corteId);
+
+  if (!corte) {
+    throw new Error("No se encontró el corte.");
+  }
+
+  if (corte.status !== "ABIERTO") {
+    throw new Error("Solo se pueden eliminar cortes abiertos.");
+  }
+
+  const usadoEnCierre = getCierres().some((cierre) =>
+    cierre.cortesIds.includes(params.corteId)
+  );
+
+  if (usadoEnCierre) {
+    throw new Error("No se puede eliminar: este corte ya pertenece a un cierre.");
+  }
+
+  const updated = cortes.filter((c) => c.id !== params.corteId);
+  write(CORTES_KEY, updated);
+
+  await restDeleteDoc("cortes", params.corteId);
+
+  return true;
 }
 
 /* =========================
@@ -165,14 +202,12 @@ export function existeCierre(
       turnoCierre === turno
     );
   });
-} 
+}
 
 export function updateCierre(cierreId: string, patch: Partial<CierreDia>) {
   const all = getCierres();
 
-  const updated = all.map((c) =>
-    c.id === cierreId ? { ...c, ...patch } : c
-  );
+  const updated = all.map((c) => (c.id === cierreId ? { ...c, ...patch } : c));
 
   write(CIERRES_KEY, updated);
 
@@ -195,19 +230,9 @@ export function marcarCierreRevisado(params: {
 
   return updateCierre(params.cierreId, {
     revisado: params.revisado,
-
-    revisadoBy: params.revisado
-      ? params.username
-      : undefined,
-
-    revisadoRole: params.revisado
-      ? params.role || "ADMIN"
-      : undefined,
-
-    revisadoAt: params.revisado
-      ? now
-      : undefined,
-
+    revisadoBy: params.revisado ? params.username : undefined,
+    revisadoRole: params.revisado ? params.role || "ADMIN" : undefined,
+    revisadoAt: params.revisado ? now : undefined,
     ultimaRevisionAt: now,
   });
 }
@@ -281,12 +306,11 @@ export async function crearCierre(input: {
   }[];
   saldoSobranteAnterior?: number;
 }) {
-
   const turno = input.turno || "GENERAL";
 
   if (existeCierre(input.sucursalId, input.fecha, turno)) {
     throw new Error("Ya existe un cierre para esta fecha y turno");
-  } 
+  }
 
   const cortes = getCortesPendientes(input.sucursalId, input.fecha, turno);
 
@@ -316,7 +340,6 @@ export async function crearCierre(input: {
   }
 
   const totalEsperado = totalMetodos(totalesPorMetodo);
-
   const bolsaFinal = Number(input.bolsaFinal ?? 0);
 
   if (!Number.isFinite(bolsaFinal) || bolsaFinal < 0) {
@@ -335,7 +358,6 @@ export async function crearCierre(input: {
   );
 
   const diferencia = bolsaFinal - efectivoNetoRequerido;
-
   const sobranteCorte = Math.max(0, bolsaFinal - efectivoNetoRequerido);
 
   const saldoSobranteActual = Math.max(
@@ -347,7 +369,7 @@ export async function crearCierre(input: {
 
   if (
     Math.abs(diferencia) > LIMITE_DIF_SIN_OBS &&
-    !(input.observaciones?.trim())
+    !input.observaciones?.trim()
   ) {
     throw new Error(
       `Diferencia mayor a ${LIMITE_DIF_SIN_OBS} MXN: agrega observaciones`
@@ -367,7 +389,7 @@ export async function crearCierre(input: {
     id: uid(),
     sucursalId: input.sucursalId,
     fecha: input.fecha,
-    turno, 
+    turno,
     cortesIds,
     totalesPorMetodo,
     totalEsperado,
@@ -386,13 +408,11 @@ export async function crearCierre(input: {
     createdBy: input.createdBy,
     pdfName: input.pdfName,
     pdfDataUrl: input.pdfDataUrl,
-
     vouchers: input.vouchers?.map((v) => ({
       name: v.name,
       dataUrl: v.dataUrl,
     })),
-
-    revisado: false, 
+    revisado: false,
     saldoSobranteAnterior,
     efectivoNetoRequerido,
     sobranteCorte,
@@ -446,4 +466,4 @@ export async function sincronizarDesdeFirebase() {
       cortes: getCortes(),
     };
   }
-} 
+}
