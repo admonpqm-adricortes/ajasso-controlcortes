@@ -7,9 +7,11 @@ import {
   eliminarCorte,
   getCierres,
   getCortes,
+  getCortesEliminados,
+  restaurarCorteEliminado,
   sincronizarDesdeFirebase,
 } from "@/lib/storage";
-import type { Corte } from "@/lib/types";
+import type { Corte, CorteEliminado } from "@/lib/types";
 
 const money = (n: number) =>
   (Number(n) || 0).toLocaleString("es-MX", {
@@ -45,16 +47,31 @@ export default function AdminCortesPage() {
 
   const [session, setSession] = useState<Session>({});
   const [cortes, setCortes] = useState<Corte[]>([]);
+  const [eliminados, setEliminados] = useState<CorteEliminado[]>([]);
   const [loading, setLoading] = useState(true);
   const [eliminandoId, setEliminandoId] = useState("");
+  const [restaurandoId, setRestaurandoId] = useState("");
 
   const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroSucursal, setFiltroSucursal] = useState("TODAS");
   const [filtroEstado, setFiltroEstado] = useState("TODOS");
   const [filtroTurno, setFiltroTurno] = useState("TODOS");
+  const [tab, setTab] = useState<"ACTIVOS" | "ELIMINADOS">("ACTIVOS");
 
   function cargarLocal() {
     setCortes(getCortes());
+    setEliminados(getCortesEliminados());
+  }
+
+  function actualizar() {
+    setLoading(true);
+    sincronizarDesdeFirebase()
+      .then(() => cargarLocal())
+      .catch((e) => {
+        console.error(e);
+        cargarLocal();
+      })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -109,8 +126,13 @@ export default function AdminCortesPage() {
   }, [cierres]);
 
   const sucursales = useMemo(() => {
-    return Array.from(new Set(cortes.map((c) => c.sucursalId))).sort();
-  }, [cortes]);
+    return Array.from(
+      new Set([
+        ...cortes.map((c) => c.sucursalId),
+        ...eliminados.map((e) => e.corte.sucursalId),
+      ])
+    ).sort();
+  }, [cortes, eliminados]);
 
   const cortesFiltrados = useMemo(() => {
     return cortes.filter((c) => {
@@ -127,9 +149,30 @@ export default function AdminCortesPage() {
     });
   }, [cortes, filtroFecha, filtroSucursal, filtroEstado, filtroTurno]);
 
+  const eliminadosFiltrados = useMemo(() => {
+    return eliminados.filter((e) => {
+      const c = e.corte;
+      const turno = c.turno || "GENERAL";
+
+      const cumpleFecha = !filtroFecha || c.fecha === filtroFecha;
+      const cumpleSucursal =
+        filtroSucursal === "TODAS" || c.sucursalId === filtroSucursal;
+      const cumpleTurno = filtroTurno === "TODOS" || turno === filtroTurno;
+
+      return cumpleFecha && cumpleSucursal && cumpleTurno;
+    });
+  }, [eliminados, filtroFecha, filtroSucursal, filtroTurno]);
+
   const totalFiltrado = useMemo(() => {
     return cortesFiltrados.reduce((acc, c) => acc + Number(c.total || 0), 0);
   }, [cortesFiltrados]);
+
+  const totalEliminadoFiltrado = useMemo(() => {
+    return eliminadosFiltrados.reduce(
+      (acc, e) => acc + Number(e.corte.total || 0),
+      0
+    );
+  }, [eliminadosFiltrados]);
 
   async function onEliminar(corte: Corte) {
     if (!esAdmin) {
@@ -147,12 +190,27 @@ export default function AdminCortesPage() {
       return;
     }
 
+    const motivo = window.prompt(
+      `Motivo de eliminación del corte:\n\nSucursal: ${
+        corte.sucursalId
+      }\nFecha: ${corte.fecha}\nTurno: ${
+        corte.turno || "GENERAL"
+      }\nTotal: ${money(corte.total)}\n\nEscribe un motivo:`
+    );
+
+    if (motivo === null) return;
+
+    if (!motivo.trim()) {
+      alert("Debes escribir un motivo para eliminar.");
+      return;
+    }
+
     const ok = window.confirm(
       `¿Seguro que deseas eliminar este corte?\n\nSucursal: ${
         corte.sucursalId
       }\nFecha: ${corte.fecha}\nTurno: ${
         corte.turno || "GENERAL"
-      }\nTotal: ${money(corte.total)}\n\nEsta acción no se puede deshacer.`
+      }\nTotal: ${money(corte.total)}\nMotivo: ${motivo}\n\nQuedará guardado en historial de eliminados.`
     );
 
     if (!ok) return;
@@ -164,16 +222,55 @@ export default function AdminCortesPage() {
         corteId: corte.id,
         username: session.username || "ADMIN",
         role: session.role,
+        motivo,
       });
 
       cargarLocal();
 
-      alert("Corte eliminado ✅");
+      alert("Corte eliminado y respaldado ✅");
     } catch (e: any) {
       console.error(e);
       alert(e?.message || "No se pudo eliminar el corte");
     } finally {
       setEliminandoId("");
+    }
+  }
+
+  async function onRestaurar(item: CorteEliminado) {
+    if (!esAdmin) {
+      alert("Solo ADMIN puede restaurar cortes.");
+      return;
+    }
+
+    const c = item.corte;
+
+    const ok = window.confirm(
+      `¿Restaurar este corte eliminado?\n\nSucursal: ${
+        c.sucursalId
+      }\nFecha: ${c.fecha}\nTurno: ${
+        c.turno || "GENERAL"
+      }\nTotal: ${money(c.total)}\n\nEl corte volverá a aparecer como ABIERTO.`
+    );
+
+    if (!ok) return;
+
+    try {
+      setRestaurandoId(item.id);
+
+      await restaurarCorteEliminado({
+        eliminadoId: item.id,
+        username: session.username || "ADMIN",
+        role: session.role,
+      });
+
+      cargarLocal();
+
+      alert("Corte restaurado ✅");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "No se pudo restaurar el corte");
+    } finally {
+      setRestaurandoId("");
     }
   }
 
@@ -194,15 +291,7 @@ export default function AdminCortesPage() {
             ← Volver al panel
           </button>
 
-          <button
-            onClick={() => {
-              setLoading(true);
-              sincronizarDesdeFirebase()
-                .then(() => cargarLocal())
-                .finally(() => setLoading(false));
-            }}
-            style={btn}
-          >
+          <button onClick={actualizar} style={btn}>
             Actualizar
           </button>
         </div>
@@ -216,8 +305,8 @@ export default function AdminCortesPage() {
             <h1 style={h1}>Administrar cortes</h1>
 
             <p style={subtitle}>
-              Consulta cortes capturados por sucursal. Solo ADMIN puede eliminar
-              cortes abiertos que no pertenezcan a un cierre.
+              Consulta cortes capturados, revisa PDFs, elimina cortes abiertos y
+              recupera cortes eliminados desde historial.
             </p>
           </div>
         </header>
@@ -266,18 +355,20 @@ export default function AdminCortesPage() {
               </select>
             </div>
 
-            <div>
-              <label style={label}>Estado</label>
-              <select
-                value={filtroEstado}
-                onChange={(e) => setFiltroEstado(e.target.value)}
-                style={input}
-              >
-                <option value="TODOS">Todos</option>
-                <option value="ABIERTO">Abiertos</option>
-                <option value="CERRADO">Cerrados</option>
-              </select>
-            </div>
+            {tab === "ACTIVOS" ? (
+              <div>
+                <label style={label}>Estado</label>
+                <select
+                  value={filtroEstado}
+                  onChange={(e) => setFiltroEstado(e.target.value)}
+                  style={input}
+                >
+                  <option value="TODOS">Todos</option>
+                  <option value="ABIERTO">Abiertos</option>
+                  <option value="CERRADO">Cerrados</option>
+                </select>
+              </div>
+            ) : null}
           </div>
 
           <button onClick={limpiarFiltros} style={{ ...btn, marginTop: 14 }}>
@@ -286,126 +377,237 @@ export default function AdminCortesPage() {
         </section>
 
         <section style={statsGrid}>
-          <StatCard label="Cortes filtrados" value={String(cortesFiltrados.length)} />
-          <StatCard label="Total filtrado" value={money(totalFiltrado)} />
           <StatCard
-            label="Abiertos"
-            value={String(cortesFiltrados.filter((c) => c.status === "ABIERTO").length)}
+            label="Cortes activos filtrados"
+            value={String(cortesFiltrados.length)}
+          />
+          <StatCard label="Total activo filtrado" value={money(totalFiltrado)} />
+          <StatCard
+            label="Eliminados filtrados"
+            value={String(eliminadosFiltrados.length)}
           />
           <StatCard
-            label="Cerrados"
-            value={String(cortesFiltrados.filter((c) => c.status === "CERRADO").length)}
+            label="Total eliminado filtrado"
+            value={money(totalEliminadoFiltrado)}
           />
         </section>
 
-        <section style={card}>
-          <h2 style={title}>Cortes capturados</h2>
+        <section style={tabsBox}>
+          <button
+            onClick={() => setTab("ACTIVOS")}
+            style={tab === "ACTIVOS" ? tabActive : tabBtn}
+          >
+            Cortes activos
+          </button>
 
-          {cortesFiltrados.length === 0 ? (
-            <div style={emptyBox}>No hay cortes con esos filtros.</div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={table}>
-                <thead>
-                  <tr>
-                    <th style={th}>Fecha</th>
-                    <th style={th}>Sucursal</th>
-                    <th style={th}>Turno</th>
-                    <th style={th}>Usuario PDF</th>
-                    <th style={th}>Creado por</th>
-                    <th style={th}>Total</th>
-                    <th style={th}>Estado</th>
-                    <th style={th}>PDF</th>
-                    <th style={th}>Acciones</th>
-                  </tr>
-                </thead>
+          <button
+            onClick={() => setTab("ELIMINADOS")}
+            style={tab === "ELIMINADOS" ? tabActive : tabBtn}
+          >
+            Historial eliminados
+          </button>
+        </section>
 
-                <tbody>
-                  {cortesFiltrados.map((c) => {
-                    const perteneceACierre = cortesEnCierre.has(c.id);
-                    const puedeEliminar =
-                      esAdmin && c.status === "ABIERTO" && !perteneceACierre;
+        {tab === "ACTIVOS" ? (
+          <section style={card}>
+            <h2 style={title}>Cortes capturados</h2>
 
-                    return (
-                      <tr key={c.id}>
-                        <td style={td}>{c.fecha}</td>
-                        <td style={td}>{c.sucursalId}</td>
-                        <td style={td}>
-                          <span style={turnoBadge}>{c.turno || "GENERAL"}</span>
-                        </td>
-                        <td style={td}>{c.usuarioPdf || "—"}</td>
-                        <td style={td}>{c.createdBy || "—"}</td>
-                        <td style={tdMoney}>{money(c.total)}</td>
-                        <td style={td}>
-                          <span
-                            style={
-                              c.status === "ABIERTO"
-                                ? statusOpen
-                                : statusClosed
-                            }
-                          >
-                            {c.status}
-                          </span>
-                        </td>
-                        <td style={td}>
-                          {c.pdfDataUrl ? (
+            {cortesFiltrados.length === 0 ? (
+              <div style={emptyBox}>No hay cortes con esos filtros.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={table}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Fecha</th>
+                      <th style={th}>Sucursal</th>
+                      <th style={th}>Turno</th>
+                      <th style={th}>Usuario PDF</th>
+                      <th style={th}>Creado por</th>
+                      <th style={th}>Total</th>
+                      <th style={th}>Estado</th>
+                      <th style={th}>PDF</th>
+                      <th style={th}>Acciones</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {cortesFiltrados.map((c) => {
+                      const perteneceACierre = cortesEnCierre.has(c.id);
+                      const puedeEliminar =
+                        esAdmin && c.status === "ABIERTO" && !perteneceACierre;
+
+                      return (
+                        <tr key={c.id}>
+                          <td style={td}>{c.fecha}</td>
+                          <td style={td}>{c.sucursalId}</td>
+                          <td style={td}>
+                            <span style={turnoBadge}>{c.turno || "GENERAL"}</span>
+                          </td>
+                          <td style={td}>{c.usuarioPdf || "—"}</td>
+                          <td style={td}>{c.createdBy || "—"}</td>
+                          <td style={tdMoney}>{money(c.total)}</td>
+                          <td style={td}>
+                            <span
+                              style={
+                                c.status === "ABIERTO"
+                                  ? statusOpen
+                                  : statusClosed
+                              }
+                            >
+                              {c.status}
+                            </span>
+                          </td>
+                          <td style={td}>
+                            {c.pdfDataUrl ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  descargarArchivo(
+                                    c.pdfDataUrl,
+                                    c.pdfName || "corte.pdf"
+                                  )
+                                }
+                                style={smallBtn}
+                              >
+                                Ver PDF
+                              </button>
+                            ) : (
+                              <span style={{ color: "#94a3b8" }}>Sin PDF</span>
+                            )}
+                          </td>
+                          <td style={td}>
                             <button
                               type="button"
-                              onClick={() =>
-                                descargarArchivo(
-                                  c.pdfDataUrl,
-                                  c.pdfName || "corte.pdf"
-                                )
+                              disabled={!puedeEliminar || eliminandoId === c.id}
+                              onClick={() => onEliminar(c)}
+                              title={
+                                !esAdmin
+                                  ? "Solo ADMIN puede eliminar"
+                                  : c.status !== "ABIERTO"
+                                  ? "Solo se eliminan cortes abiertos"
+                                  : perteneceACierre
+                                  ? "Este corte ya pertenece a un cierre"
+                                  : "Eliminar corte"
                               }
-                              style={smallBtn}
+                              style={{
+                                ...deleteBtn,
+                                opacity:
+                                  !puedeEliminar || eliminandoId === c.id
+                                    ? 0.45
+                                    : 1,
+                                cursor:
+                                  !puedeEliminar || eliminandoId === c.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                              }}
                             >
-                              Ver PDF
+                              {eliminandoId === c.id
+                                ? "Eliminando..."
+                                : "Eliminar"}
                             </button>
-                          ) : (
-                            <span style={{ color: "#94a3b8" }}>Sin PDF</span>
-                          )}
-                        </td>
-                        <td style={td}>
-                          <button
-                            type="button"
-                            disabled={!puedeEliminar || eliminandoId === c.id}
-                            onClick={() => onEliminar(c)}
-                            title={
-                              !esAdmin
-                                ? "Solo ADMIN puede eliminar"
-                                : c.status !== "ABIERTO"
-                                ? "Solo se eliminan cortes abiertos"
-                                : perteneceACierre
-                                ? "Este corte ya pertenece a un cierre"
-                                : "Eliminar corte"
-                            }
-                            style={{
-                              ...deleteBtn,
-                              opacity:
-                                !puedeEliminar || eliminandoId === c.id
-                                  ? 0.45
-                                  : 1,
-                              cursor:
-                                !puedeEliminar || eliminandoId === c.id
-                                  ? "not-allowed"
-                                  : "pointer",
-                            }}
-                          >
-                            {eliminandoId === c.id ? "Eliminando..." : "Eliminar"}
-                          </button>
 
-                          {perteneceACierre ? (
-                            <div style={miniHelp}>Incluido en cierre</div>
-                          ) : null}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                            {perteneceACierre ? (
+                              <div style={miniHelp}>Incluido en cierre</div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ) : (
+          <section style={card}>
+            <h2 style={title}>Historial de cortes eliminados</h2>
+
+            {eliminadosFiltrados.length === 0 ? (
+              <div style={emptyBox}>No hay cortes eliminados con esos filtros.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={table}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Eliminado</th>
+                      <th style={th}>Eliminado por</th>
+                      <th style={th}>Fecha corte</th>
+                      <th style={th}>Sucursal</th>
+                      <th style={th}>Turno</th>
+                      <th style={th}>Total</th>
+                      <th style={th}>Motivo</th>
+                      <th style={th}>PDF</th>
+                      <th style={th}>Acciones</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {eliminadosFiltrados.map((item) => {
+                      const c = item.corte;
+
+                      return (
+                        <tr key={item.id}>
+                          <td style={td}>
+                            {new Date(item.eliminadoAt).toLocaleString("es-MX")}
+                          </td>
+                          <td style={td}>{item.eliminadoPor || "—"}</td>
+                          <td style={td}>{c.fecha}</td>
+                          <td style={td}>{c.sucursalId}</td>
+                          <td style={td}>
+                            <span style={turnoBadge}>{c.turno || "GENERAL"}</span>
+                          </td>
+                          <td style={tdMoney}>{money(c.total)}</td>
+                          <td style={td}>{item.motivo || "—"}</td>
+                          <td style={td}>
+                            {c.pdfDataUrl ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  descargarArchivo(
+                                    c.pdfDataUrl,
+                                    c.pdfName || "corte.pdf"
+                                  )
+                                }
+                                style={smallBtn}
+                              >
+                                Ver PDF
+                              </button>
+                            ) : (
+                              <span style={{ color: "#94a3b8" }}>Sin PDF</span>
+                            )}
+                          </td>
+                          <td style={td}>
+                            <button
+                              type="button"
+                              disabled={!esAdmin || restaurandoId === item.id}
+                              onClick={() => onRestaurar(item)}
+                              style={{
+                                ...restoreBtn,
+                                opacity:
+                                  !esAdmin || restaurandoId === item.id
+                                    ? 0.45
+                                    : 1,
+                                cursor:
+                                  !esAdmin || restaurandoId === item.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                              }}
+                            >
+                              {restaurandoId === item.id
+                                ? "Restaurando..."
+                                : "Restaurar"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </main>
   );
@@ -527,6 +729,30 @@ const statCard: React.CSSProperties = {
   boxShadow: "0 10px 24px rgba(31, 41, 55, 0.07)",
 };
 
+const tabsBox: React.CSSProperties = {
+  marginTop: 16,
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const tabBtn: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 999,
+  border: "1px solid #dbeafe",
+  background: "white",
+  color: "#312e81",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const tabActive: React.CSSProperties = {
+  ...tabBtn,
+  background: "#ecfeff",
+  color: "#0f766e",
+  border: "1px solid #99f6e4",
+};
+
 const table: React.CSSProperties = {
   width: "100%",
   borderCollapse: "collapse",
@@ -605,6 +831,15 @@ const deleteBtn: React.CSSProperties = {
   border: "1px solid #fecaca",
   background: "#fff1f2",
   color: "#991b1b",
+  fontWeight: 900,
+};
+
+const restoreBtn: React.CSSProperties = {
+  padding: "7px 10px",
+  borderRadius: 10,
+  border: "1px solid #bbf7d0",
+  background: "#ecfdf5",
+  color: "#166534",
   fontWeight: 900,
 };
 

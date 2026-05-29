@@ -1,6 +1,7 @@
 import type {
   CierreDia,
   Corte,
+  CorteEliminado,
   DenominacionesMXN,
   MetodosPago,
   TurnoCierre,
@@ -86,9 +87,14 @@ export function totalDenominacionesMXN(d: DenominacionesMXN) {
 ========================= */
 
 const CORTES_KEY = "cortes";
+const CORTES_ELIMINADOS_KEY = "cortesEliminados";
 
 export function getCortes(): Corte[] {
   return read<Corte[]>(CORTES_KEY, []);
+}
+
+export function getCortesEliminados(): CorteEliminado[] {
+  return read<CorteEliminado[]>(CORTES_ELIMINADOS_KEY, []);
 }
 
 export async function saveCorte(corte: Corte) {
@@ -137,6 +143,7 @@ export async function eliminarCorte(params: {
   corteId: string;
   username: string;
   role?: string;
+  motivo?: string;
 }) {
   if (params.role !== "ADMIN") {
     throw new Error("Solo ADMIN puede eliminar cortes.");
@@ -161,10 +168,61 @@ export async function eliminarCorte(params: {
     throw new Error("No se puede eliminar: este corte ya pertenece a un cierre.");
   }
 
+  const eliminado: CorteEliminado = {
+    id: `deleted_${corte.id}`,
+    corte,
+    eliminadoPor: params.username || "ADMIN",
+    eliminadoAt: new Date().toISOString(),
+    motivo: params.motivo?.trim() || undefined,
+  };
+
+  const eliminados = getCortesEliminados();
+  write(CORTES_ELIMINADOS_KEY, [eliminado, ...eliminados]);
+
+  await restSetDoc("cortes_eliminados", eliminado.id, removeUndefinedDeep(eliminado));
+
   const updated = cortes.filter((c) => c.id !== params.corteId);
   write(CORTES_KEY, updated);
 
   await restDeleteDoc("cortes", params.corteId);
+
+  return true;
+}
+
+export async function restaurarCorteEliminado(params: {
+  eliminadoId: string;
+  username: string;
+  role?: string;
+}) {
+  if (params.role !== "ADMIN") {
+    throw new Error("Solo ADMIN puede restaurar cortes.");
+  }
+
+  const eliminados = getCortesEliminados();
+  const found = eliminados.find((x) => x.id === params.eliminadoId);
+
+  if (!found) {
+    throw new Error("No se encontró el corte eliminado.");
+  }
+
+  const cortes = getCortes();
+
+  if (cortes.some((c) => c.id === found.corte.id)) {
+    throw new Error("Este corte ya existe nuevamente en cortes activos.");
+  }
+
+  const corteRestaurado: Corte = {
+    ...found.corte,
+    status: "ABIERTO",
+  };
+
+  write(CORTES_KEY, [corteRestaurado, ...cortes]);
+  await restSetDoc("cortes", corteRestaurado.id, removeUndefinedDeep(corteRestaurado));
+
+  const restantes = eliminados.filter((x) => x.id !== params.eliminadoId);
+  write(CORTES_ELIMINADOS_KEY, restantes);
+
+  await restDeleteDoc("cortes_eliminados", params.eliminadoId);
 
   return true;
 }
@@ -436,6 +494,8 @@ export async function sincronizarDesdeFirebase() {
   try {
     const cierres = await restGetCollection<CierreDia>("cierres");
     const cortes = await restGetCollection<Corte>("cortes");
+    const cortesEliminados =
+      await restGetCollection<CorteEliminado>("cortes_eliminados");
 
     cierres.sort((a, b) => {
       const keyA = `${a.fecha}|${a.createdAt}`;
@@ -449,21 +509,30 @@ export async function sincronizarDesdeFirebase() {
       return keyA < keyB ? 1 : keyA > keyB ? -1 : 0;
     });
 
+    cortesEliminados.sort((a, b) => {
+      const keyA = a.eliminadoAt || "";
+      const keyB = b.eliminadoAt || "";
+      return keyA < keyB ? 1 : keyA > keyB ? -1 : 0;
+    });
+
     write(CIERRES_KEY, cierres);
     write(CORTES_KEY, cortes);
+    write(CORTES_ELIMINADOS_KEY, cortesEliminados);
 
     console.log("✅ Sincronización Firebase REST completada", {
       cierres: cierres.length,
       cortes: cortes.length,
+      cortesEliminados: cortesEliminados.length,
     });
 
-    return { cierres, cortes };
+    return { cierres, cortes, cortesEliminados };
   } catch (e) {
     console.error("❌ Error sincronizando Firebase REST:", e);
 
     return {
       cierres: getCierres(),
       cortes: getCortes(),
+      cortesEliminados: getCortesEliminados(),
     };
   }
 }

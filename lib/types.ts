@@ -35,6 +35,17 @@ export type Corte = {
   uploadedByEmail?: string;
 };
 
+export type CorteEliminado = {
+  id: string;
+
+  corte: Corte;
+
+  eliminadoPor: string;
+  eliminadoAt: string;
+
+  motivo?: string;
+};
+
 export type DenominacionesMXN = {
   b1000: number;
   b500: number;
