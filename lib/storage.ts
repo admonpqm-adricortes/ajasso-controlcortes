@@ -161,8 +161,8 @@ export async function eliminarCorte(params: {
   }
 
   const usadoEnCierre = getCierres().some((cierre) =>
-    cierre.cortesIds.includes(params.corteId)
-  );
+  (cierre.cortesIds || []).includes(params.corteId)
+);
 
   if (usadoEnCierre) {
     throw new Error("No se puede eliminar: este corte ya pertenece a un cierre.");
