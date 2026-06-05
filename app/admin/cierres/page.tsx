@@ -209,11 +209,11 @@ export default function AdminCierresPage() {
           </button>
 
           <button
-            onClick={() => exportarRelacionEntregaEfectivo(relacionRows as any)}
-            style={btn}
-          >
-            Exportar entrega efectivo
-          </button>
+  onClick={() => exportarRelacionEntregaEfectivo(cierresFiltrados as any)}
+  style={btn}
+>
+  Exportar entrega efectivo
+</button>
         </div>
 
         <header style={hero}>
