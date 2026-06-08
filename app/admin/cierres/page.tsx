@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCierres } from "../../../lib/storage";
+import {
+  getCierres,
+  sincronizarDesdeFirebase,
+} from "../../../lib/storage";
 import {
   exportarCierresExcel,
   exportarRelacionEntregaEfectivo,
@@ -33,7 +36,8 @@ export default function AdminCierresPage() {
   const [filtroEstado, setFiltroEstado] = useState("TODOS");
   const [filtroTurno, setFiltroTurno] = useState("TODOS");
 
-  function cargar() {
+  async function cargar() {
+    await sincronizarDesdeFirebase();
     setCierres(getCierres());
   }
 
@@ -58,8 +62,10 @@ export default function AdminCierresPage() {
       }
 
       setSession(s);
-      cargar();
-      setChecking(false);
+
+      cargar().finally(() => {
+        setChecking(false);
+      });
     } catch {
       router.replace("/acceso");
     }
