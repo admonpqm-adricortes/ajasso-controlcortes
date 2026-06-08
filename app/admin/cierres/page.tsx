@@ -2,14 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import {
   getCierres,
   sincronizarDesdeFirebase,
 } from "../../../lib/storage";
+
 import {
   exportarCierresExcel,
   exportarRelacionEntregaEfectivo,
 } from "../../../lib/exportExcel";
+
 import type { CierreDia } from "../../../lib/types";
 
 const money = (n: number) =>
@@ -24,12 +27,30 @@ type Session = {
   role?: "ADMIN" | "SUPERVISOR" | "CONSULTA" | "SUCURSAL";
 };
 
+function normalizarFecha(value?: string) {
+  const raw = String(value || "").trim();
+
+  if (!raw) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.slice(0, 10);
+  }
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [d, m, y] = raw.split("/");
+    return `${y}-${m}-${d}`;
+  }
+
+  return raw.slice(0, 10);
+}
+
 export default function AdminCierresPage() {
   const router = useRouter();
 
   const [session, setSession] = useState<Session>({});
   const [cierres, setCierres] = useState<CierreDia[]>([]);
   const [checking, setChecking] = useState(true);
+  const [actualizando, setActualizando] = useState(false);
 
   const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroSucursal, setFiltroSucursal] = useState("TODAS");
@@ -37,8 +58,22 @@ export default function AdminCierresPage() {
   const [filtroTurno, setFiltroTurno] = useState("TODOS");
 
   async function cargar() {
-    await sincronizarDesdeFirebase();
-    setCierres(getCierres());
+    try {
+      setActualizando(true);
+
+      const data = await sincronizarDesdeFirebase();
+
+      if (data?.cierres) {
+        setCierres(data.cierres);
+      } else {
+        setCierres(getCierres());
+      }
+    } catch (e) {
+      console.error(e);
+      setCierres(getCierres());
+    } finally {
+      setActualizando(false);
+    }
   }
 
   useEffect(() => {
@@ -72,14 +107,24 @@ export default function AdminCierresPage() {
   }, [router]);
 
   const sucursales = useMemo(() => {
-    return Array.from(new Set(cierres.map((c) => c.sucursalId))).sort();
+    return Array.from(
+      new Set(
+        cierres
+          .map((c) => c.sucursalId)
+          .filter((s): s is string => Boolean(s))
+      )
+    ).sort();
   }, [cierres]);
 
   const cierresFiltrados = useMemo(() => {
+    const fechaFiltro = normalizarFecha(filtroFecha);
+
     return cierres.filter((c) => {
+      const fechaCierre = normalizarFecha(c.fecha);
       const turno = c.turno || "GENERAL";
 
-      const cumpleFecha = !filtroFecha || c.fecha === filtroFecha;
+      const cumpleFecha = !fechaFiltro || fechaCierre === fechaFiltro;
+
       const cumpleSucursal =
         filtroSucursal === "TODAS" || c.sucursalId === filtroSucursal;
 
@@ -128,6 +173,7 @@ export default function AdminCierresPage() {
     const map = new Map<string, number>();
 
     for (const c of cierres) {
+      if (!c.sucursalId) continue;
       map.set(c.sucursalId, Number(c.saldoSobranteActual || 0));
     }
 
@@ -203,8 +249,8 @@ export default function AdminCierresPage() {
             ← Volver al panel
           </button>
 
-          <button onClick={cargar} style={btn}>
-            Actualizar
+          <button onClick={cargar} style={btn} disabled={actualizando}>
+            {actualizando ? "Actualizando..." : "Actualizar"}
           </button>
 
           <button
@@ -215,11 +261,13 @@ export default function AdminCierresPage() {
           </button>
 
           <button
-  onClick={() => exportarRelacionEntregaEfectivo(cierresFiltrados as any)}
-  style={btn}
->
-  Exportar entrega efectivo
-</button>
+            onClick={() =>
+              exportarRelacionEntregaEfectivo(cierresFiltrados as any)
+            }
+            style={btn}
+          >
+            Exportar entrega efectivo
+          </button>
         </div>
 
         <header style={hero}>
@@ -329,12 +377,30 @@ export default function AdminCierresPage() {
         </section>
 
         <section style={statsGrid}>
-          <StatCard label="Cierres filtrados" value={String(cierresFiltrados.length)} />
-          <StatCard label="Revisados filtrados" value={String(revisadosFiltrados.length)} />
-          <StatCard label="Pendientes filtrados" value={String(pendientesFiltrados.length)} />
-          <StatCard label="Total esperado filtrado" value={money(totalEsperadoFiltrado)} />
-          <StatCard label="Bolsa final filtrada" value={money(totalBolsaFiltrada)} />
-          <StatCard label="Diferencia filtrada" value={money(totalDiferenciaFiltrada)} />
+          <StatCard
+            label="Cierres filtrados"
+            value={String(cierresFiltrados.length)}
+          />
+          <StatCard
+            label="Revisados filtrados"
+            value={String(revisadosFiltrados.length)}
+          />
+          <StatCard
+            label="Pendientes filtrados"
+            value={String(pendientesFiltrados.length)}
+          />
+          <StatCard
+            label="Total esperado filtrado"
+            value={money(totalEsperadoFiltrado)}
+          />
+          <StatCard
+            label="Bolsa final filtrada"
+            value={money(totalBolsaFiltrada)}
+          />
+          <StatCard
+            label="Diferencia filtrada"
+            value={money(totalDiferenciaFiltrada)}
+          />
         </section>
 
         <section style={card}>
@@ -387,9 +453,7 @@ export default function AdminCierresPage() {
                         {money(r.diferencia)}
                       </td>
                       <td style={td}>
-                        <span
-                          style={r.revisado ? statusOk : statusPending}
-                        >
+                        <span style={r.revisado ? statusOk : statusPending}>
                           {r.revisado ? "Revisado" : "Pendiente"}
                         </span>
                       </td>
@@ -410,13 +474,23 @@ export default function AdminCierresPage() {
                       TOTALES
                     </td>
                     <td style={tdMoneyTotal}>{money(totalesRelacion.total)}</td>
-                    <td style={tdMoneyTotal}>{money(totalesRelacion.tarjetas)}</td>
-                    <td style={tdMoneyTotal}>{money(totalesRelacion.transferencias)}</td>
+                    <td style={tdMoneyTotal}>
+                      {money(totalesRelacion.tarjetas)}
+                    </td>
+                    <td style={tdMoneyTotal}>
+                      {money(totalesRelacion.transferencias)}
+                    </td>
                     <td style={tdMoneyTotal}>{money(totalesRelacion.vales)}</td>
                     <td style={tdMoneyTotal}>{money(totalesRelacion.otros)}</td>
-                    <td style={tdMoneyTotal}>{money(totalesRelacion.efectivo)}</td>
-                    <td style={tdMoneyTotal}>{money(totalesRelacion.bolsaFinal)}</td>
-                    <td style={tdMoneyTotal}>{money(totalesRelacion.diferencia)}</td>
+                    <td style={tdMoneyTotal}>
+                      {money(totalesRelacion.efectivo)}
+                    </td>
+                    <td style={tdMoneyTotal}>
+                      {money(totalesRelacion.bolsaFinal)}
+                    </td>
+                    <td style={tdMoneyTotal}>
+                      {money(totalesRelacion.diferencia)}
+                    </td>
                     <td style={tdTotal}></td>
                     <td style={tdTotal}></td>
                   </tr>
