@@ -12,16 +12,17 @@ function getToken() {
   return token;
 }
 
+function getDocIdFromName(name?: string) {
+  if (!name) return "";
+  return name.split("/").pop() || "";
+}
+
 function toFirestoreValue(value: any): any {
   if (value === null) return { nullValue: null };
 
-  if (typeof value === "string") {
-    return { stringValue: value };
-  }
+  if (typeof value === "string") return { stringValue: value };
 
-  if (typeof value === "boolean") {
-    return { booleanValue: value };
-  }
+  if (typeof value === "boolean") return { booleanValue: value };
 
   if (typeof value === "number") {
     return Number.isInteger(value)
@@ -45,29 +46,15 @@ function toFirestoreValue(value: any): any {
     };
   }
 
-  return {
-    stringValue: String(value),
-  };
+  return { stringValue: String(value) };
 }
 
 function fromFirestoreValue(value: any): any {
   if ("stringValue" in value) return value.stringValue;
-
-  if ("integerValue" in value) {
-    return Number(value.integerValue);
-  }
-
-  if ("doubleValue" in value) {
-    return Number(value.doubleValue);
-  }
-
-  if ("booleanValue" in value) {
-    return value.booleanValue;
-  }
-
-  if ("nullValue" in value) {
-    return null;
-  }
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return Number(value.doubleValue);
+  if ("booleanValue" in value) return value.booleanValue;
+  if ("nullValue" in value) return null;
 
   if ("arrayValue" in value) {
     return (value.arrayValue.values || []).map(fromFirestoreValue);
@@ -97,11 +84,7 @@ function fromFirestoreFields(fields: any) {
   );
 }
 
-export async function restSetDoc(
-  collection: string,
-  id: string,
-  data: any
-) {
+export async function restSetDoc(collection: string, id: string, data: any) {
   const token = getToken();
 
   const res = await fetch(`${BASE_URL}/${collection}/${id}`, {
@@ -117,16 +100,11 @@ export async function restSetDoc(
 
   if (!res.ok) {
     const error = await res.text();
-
     throw new Error(`Firebase no permitió guardar: ${error}`);
   }
 }
 
-export async function restUpdateDoc(
-  collection: string,
-  id: string,
-  data: any
-) {
+export async function restUpdateDoc(collection: string, id: string, data: any) {
   const token = getToken();
 
   const cleanData = Object.fromEntries(
@@ -134,67 +112,31 @@ export async function restUpdateDoc(
   );
 
   const updateMask = Object.keys(cleanData)
-    .map(
-      (key) =>
-        `updateMask.fieldPaths=${encodeURIComponent(key)}`
-    )
+    .map((key) => `updateMask.fieldPaths=${encodeURIComponent(key)}`)
     .join("&");
 
-  const res = await fetch(
-    `${BASE_URL}/${collection}/${id}?${updateMask}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        fields: toFirestoreFields(cleanData),
-      }),
-    }
-  );
+  const res = await fetch(`${BASE_URL}/${collection}/${id}?${updateMask}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      fields: toFirestoreFields(cleanData),
+    }),
+  });
 
   if (!res.ok) {
     const error = await res.text();
-
-    throw new Error(
-      `Firebase no permitió actualizar: ${error}`
-    );
+    throw new Error(`Firebase no permitió actualizar: ${error}`);
   }
 }
 
-export async function restDeleteDoc(
-  collection: string,
-  id: string
-) {
+export async function restDeleteDoc(collection: string, id: string) {
   const token = getToken();
 
-  const res = await fetch(
-    `${BASE_URL}/${collection}/${id}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  if (!res.ok) {
-    const error = await res.text();
-
-    throw new Error(
-      `Firebase no permitió eliminar: ${error}`
-    );
-  }
-}
-
-export async function restGetCollection<T>(
-  collection: string
-): Promise<T[]> {
-  const token = getToken();
-
-  const res = await fetch(`${BASE_URL}/${collection}`, {
-    method: "GET",
+  const res = await fetch(`${BASE_URL}/${collection}/${id}`, {
+    method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -202,15 +144,52 @@ export async function restGetCollection<T>(
 
   if (!res.ok) {
     const error = await res.text();
-
-    throw new Error(
-      `Firebase no permitió leer: ${error}`
-    );
+    throw new Error(`Firebase no permitió eliminar: ${error}`);
   }
+}
 
-  const json = await res.json();
+export async function restGetCollection<T>(collection: string): Promise<T[]> {
+  const token = getToken();
 
-  return (json.documents || []).map((doc: any) =>
-    fromFirestoreFields(doc.fields || {})
-  ) as T[];
+  const all: T[] = [];
+  let pageToken = "";
+
+  do {
+    const url = new URL(`${BASE_URL}/${collection}`);
+    url.searchParams.set("pageSize", "300");
+
+    if (pageToken) {
+      url.searchParams.set("pageToken", pageToken);
+    }
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Firebase no permitió leer: ${error}`);
+    }
+
+    const json = await res.json();
+
+    const docs = (json.documents || []).map((doc: any) => {
+      const data = fromFirestoreFields(doc.fields || {}) as any;
+      const docId = getDocIdFromName(doc.name);
+
+      return {
+        id: data.id || docId,
+        ...data,
+      };
+    }) as T[];
+
+    all.push(...docs);
+
+    pageToken = json.nextPageToken || "";
+  } while (pageToken);
+
+  return all;
 }
