@@ -32,8 +32,16 @@ function read<T>(key: string, fallback: T): T {
 }
 
 function write<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn("No se pudo guardar en localStorage:", key, e);
+
+    if (key === "cortes" || key === "cierres" || key === "cortesEliminados") {
+      localStorage.removeItem(key);
+    }
+  }
+} 
 
 function removeUndefinedDeep<T>(value: T): T {
   if (Array.isArray(value)) {
@@ -516,8 +524,27 @@ export async function sincronizarDesdeFirebase() {
     });
 
     write(CIERRES_KEY, cierres);
-    write(CORTES_KEY, cortes);
-    write(CORTES_ELIMINADOS_KEY, cortesEliminados);
+
+    write(
+      CORTES_KEY,
+      cortes.map((c: any) => ({
+        ...c,
+        pdfDataUrl: undefined,
+      }))
+    );
+    
+    write(
+      CORTES_ELIMINADOS_KEY,
+      cortesEliminados.map((x: any) => ({
+        ...x,
+        corte: x.corte
+          ? {
+              ...x.corte,
+              pdfDataUrl: undefined,
+            }
+          : x.corte,
+      }))
+    );
 
     console.log("✅ Sincronización Firebase REST completada", {
       cierres: cierres.length,
