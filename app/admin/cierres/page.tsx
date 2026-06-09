@@ -63,6 +63,8 @@ export default function AdminCierresPage() {
 
       const data = await sincronizarDesdeFirebase();
 
+      console.log("CIERRES FIREBASE", data?.cierres);
+
       if (data?.cierres) {
         setCierres(data.cierres);
       } else {

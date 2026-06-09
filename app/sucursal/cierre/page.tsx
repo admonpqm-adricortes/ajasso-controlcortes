@@ -15,6 +15,7 @@ import {
   getSaldoSobranteSucursal,
   totalMetodos,
   totalDenominacionesMXN,
+  sincronizarDesdeFirebase,
 } from "@/lib/storage";
 import { parseTotalesDesdePdfText } from "@/lib/corteParser";
 
@@ -272,11 +273,14 @@ export default function CierreSucursalPage() {
     }
   }, [router]);
 
-  function recargar() {
+  async function recargar() {
     try {
       if (!sucursal) return;
 
       setPdfError("");
+
+      await sincronizarDesdeFirebase();
+
       const pendientes = getCortesPendientes(sucursal, fechaYMD, turno);
       setCortesPendientes(pendientes || []);
       setSaldoSobranteAnterior(getSaldoSobranteSucursal(sucursal));
@@ -399,106 +403,134 @@ export default function CierreSucursalPage() {
   const diferencia = Number(bolsaFinal || 0) - efectivoNetoAEnviar;
   const totalDenoms = useMemo(() => totalDenominacionesMXN(denoms), [denoms]);
 
-  const requiereDenominaciones = efectivoNetoAEnviar > 0;
+  async function guardarCierre() {
+    try {
+      if (!sucursal) throw new Error("No hay sucursal asignada");
+      if (!session?.username) throw new Error("No hay sesión activa");
 
-useEffect(() => {
-  if (requiereDenominaciones && !capturarDenoms) {
-    setCapturarDenoms(true);
-  }
-}, [requiereDenominaciones, capturarDenoms]); 
+      await sincronizarDesdeFirebase();
 
-async function guardarCierre() {
-  try {
-    if (!sucursal) throw new Error("No hay sucursal asignada");
-    if (!session?.username) throw new Error("No hay sesión activa");
-
-    if (!hayCortesPendientes && !pdfFile) {
-      throw new Error(
-        "No hay cortes pendientes. Sube un PDF de respaldo para generar el cierre."
+      const pendientesActualizados = getCortesPendientes(
+        sucursal,
+        fechaYMD,
+        turno
       );
-    }
 
-    if ((totalesBase.tarjeta || 0) > 0 && voucherFiles.length === 0) {
-      throw new Error(
-        "Este cierre tiene tarjeta. Debes subir al menos una imagen de voucher antes de guardar."
+      const saldoActualizado = getSaldoSobranteSucursal(sucursal);
+
+      setCortesPendientes(pendientesActualizados || []);
+      setSaldoSobranteAnterior(saldoActualizado);
+
+      const hayPendientesActualizados = pendientesActualizados.length > 0;
+
+      const totalesBaseActualizados: MetodosPago = hayPendientesActualizados
+        ? sumarCortes(pendientesActualizados)
+        : {
+            efectivo: Number(totalesPdf.efectivo || 0),
+            tarjeta: Number(totalesPdf.tarjeta || 0),
+            transferencia: Number(totalesPdf.transferencia || 0),
+            vales: Number(totalesPdf.vales || 0),
+            otros: Number(totalesPdf.otros || 0),
+          };
+
+      if (!hayPendientesActualizados && !pdfFile) {
+        throw new Error(
+          "No hay cortes pendientes. Sube un PDF de respaldo para generar el cierre."
+        );
+      }
+
+      if (
+        (totalesBaseActualizados.tarjeta || 0) > 0 &&
+        voucherFiles.length === 0
+      ) {
+        throw new Error(
+          "Este cierre tiene tarjeta. Debes subir al menos una imagen de voucher antes de guardar."
+        );
+      }
+
+      const bolsaFinalNum = Number(bolsaFinal || 0);
+      const efectivoEsperadoActualizado = Number(
+        totalesBaseActualizados.efectivo || 0
       );
+
+      const efectivoNetoAEnviarActualizado = Math.max(
+        0,
+        efectivoEsperadoActualizado - saldoActualizado
+      );
+
+      if (efectivoNetoAEnviarActualizado > 0) {
+        if (!capturarDenoms) {
+          throw new Error(
+            "Este cierre tiene efectivo. Debes capturar denominaciones."
+          );
+        }
+
+        if (bolsaFinalNum <= 0) {
+          throw new Error(
+            "Este cierre tiene efectivo. Debes capturar la bolsa final física."
+          );
+        }
+
+        if (totalDenoms <= 0) {
+          throw new Error(
+            "Este cierre tiene efectivo. Debes capturar las denominaciones."
+          );
+        }
+
+        const TOLERANCIA = 1;
+
+        if (Math.abs(totalDenoms - bolsaFinalNum) > TOLERANCIA) {
+          throw new Error(
+            `Las denominaciones no cuadran con la bolsa final. Bolsa: ${money(
+              bolsaFinalNum
+            )}, denominaciones: ${money(totalDenoms)}`
+          );
+        }
+      }
+
+      setGuardando(true);
+
+      let pdfDataUrl: string | undefined;
+      if (pdfFile) {
+        pdfDataUrl = await fileToBase64(pdfFile);
+      }
+
+      const vouchers =
+        voucherPreviews.length > 0
+          ? voucherPreviews.map((v) => ({
+              name: v.name,
+              dataUrl: v.dataUrl,
+            }))
+          : undefined;
+
+      await crearCierre({
+        sucursalId: sucursal,
+        fecha: fechaYMD,
+        turno,
+        bolsaFinal: bolsaFinalNum,
+        denominaciones: capturarDenoms ? denoms : undefined,
+        observaciones: hayPendientesActualizados
+          ? `Cierre generado con ${pendientesActualizados.length} corte(s) pendiente(s)`
+          : pdfName
+          ? `PDF de respaldo cargado: ${pdfName}`
+          : undefined,
+        createdBy: session.username,
+        pdfName: pdfFile?.name,
+        pdfDataUrl,
+        totalesPdf: hayPendientesActualizados ? undefined : totalesBaseActualizados,
+        vouchers,
+        saldoSobranteAnterior: saldoActualizado,
+      });
+
+      alert("Cierre guardado ✅");
+      router.push("/sucursal");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "No se pudo guardar el cierre");
+    } finally {
+      setGuardando(false);
     }
-
-    const bolsaFinalNum = Number(bolsaFinal || 0);
-
-    if (efectivoNetoAEnviar > 0) {
-      if (!capturarDenoms) {
-        throw new Error(
-          "Este cierre tiene efectivo. Debes capturar denominaciones."
-        );
-      }
-
-      if (bolsaFinalNum <= 0) {
-        throw new Error(
-          "Este cierre tiene efectivo. Debes capturar la bolsa final física."
-        );
-      }
-
-      if (totalDenoms <= 0) {
-        throw new Error(
-          "Este cierre tiene efectivo. Debes capturar las denominaciones."
-        );
-      }
-
-      const TOLERANCIA = 1;
-
-      if (Math.abs(totalDenoms - bolsaFinalNum) > TOLERANCIA) {
-        throw new Error(
-          `Las denominaciones no cuadran con la bolsa final. Bolsa: ${money(
-            bolsaFinalNum
-          )}, denominaciones: ${money(totalDenoms)}`
-        );
-      }
-    }
-
-    setGuardando(true);
-
-    let pdfDataUrl: string | undefined;
-    if (pdfFile) {
-      pdfDataUrl = await fileToBase64(pdfFile);
-    }
-
-    const vouchers =
-      voucherPreviews.length > 0
-        ? voucherPreviews.map((v) => ({
-            name: v.name,
-            dataUrl: v.dataUrl,
-          }))
-        : undefined;
-
-    await crearCierre({
-      sucursalId: sucursal,
-      fecha: fechaYMD,
-      turno,
-      bolsaFinal: bolsaFinalNum,
-      denominaciones: capturarDenoms ? denoms : undefined,
-      observaciones: hayCortesPendientes
-        ? `Cierre generado con ${cortesPendientes.length} corte(s) pendiente(s)`
-        : pdfName
-        ? `PDF de respaldo cargado: ${pdfName}`
-        : undefined,
-      createdBy: session.username,
-      pdfName: pdfFile?.name,
-      pdfDataUrl,
-      totalesPdf: hayCortesPendientes ? undefined : totalesBase,
-      vouchers,
-      saldoSobranteAnterior,
-    });
-
-    alert("Cierre guardado ✅");
-    router.push("/sucursal");
-  } catch (e: any) {
-    console.error(e);
-    alert(e?.message || "No se pudo guardar el cierre");
-  } finally {
-    setGuardando(false);
   }
-} 
 
   return (
     <main style={pageStyle}>
@@ -815,17 +847,13 @@ async function guardarCierre() {
           </div>
 
           <label style={{ display: "flex", gap: 8, marginTop: 16 }}>
-  <input
-    type="checkbox"
-    checked={capturarDenoms}
-    disabled={requiereDenominaciones}
-    onChange={(e) => setCapturarDenoms(e.target.checked)}
-  />
-  <b>
-    Capturar denominaciones{" "}
-    {requiereDenominaciones ? "(obligatorio por efectivo)" : ""}
-  </b>
-</label>
+            <input
+              type="checkbox"
+              checked={capturarDenoms}
+              onChange={(e) => setCapturarDenoms(e.target.checked)}
+            />
+            <b>Capturar denominaciones</b>
+          </label>
 
           {capturarDenoms ? (
             <div style={denomGrid}>
