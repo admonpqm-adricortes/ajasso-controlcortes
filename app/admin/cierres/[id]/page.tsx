@@ -7,7 +7,9 @@ import {
   getCierres,
   getCortes,
   marcarCierreRevisado,
+  sincronizarDesdeFirebase,
 } from "@/lib/storage";
+
 import type { CierreDia, Corte, DenominacionesMXN } from "@/lib/types";
 
 const money = (n: number) =>
@@ -48,13 +50,15 @@ export default function AdminCierreDetallePage() {
   const [cierre, setCierre] = useState<CierreDia | null>(null);
   const [cortes, setCortes] = useState<Corte[]>([]);
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   const esAdmin = session.role === "ADMIN";
   const esConsulta =
     session.role === "SUPERVISOR" || session.role === "CONSULTA";
 
-  function cargar() {
+  async function cargar() {
     const raw = localStorage.getItem("session");
+
     if (!raw) {
       router.replace("/acceso");
       return;
@@ -73,19 +77,30 @@ export default function AdminCierreDetallePage() {
 
     setSession(s);
 
-    const found = getCierres().find((x) => x.id === id) ?? null;
+    const data = await sincronizarDesdeFirebase();
+
+    const cierresActuales = data?.cierres || getCierres();
+    const cortesActuales = data?.cortes || getCortes();
+
+    const found = cierresActuales.find((x) => x.id === id) ?? null;
     setCierre(found);
 
     if (found) {
-      const all = getCortes();
-      setCortes(all.filter((c) => found.cortesIds.includes(c.id)));
+      setCortes(
+        cortesActuales.filter((c) => (found.cortesIds || []).includes(c.id))
+      );
     } else {
       setCortes([]);
     }
   }
 
   useEffect(() => {
-    cargar();
+    cargar()
+      .catch((e) => {
+        console.error(e);
+        alert(e?.message || "No se pudo cargar el detalle del cierre");
+      })
+      .finally(() => setChecking(false));
   }, [id, router]);
 
   const denoms = cierre?.bolsa?.denominaciones;
@@ -139,6 +154,8 @@ export default function AdminCierreDetallePage() {
       setLoading(false);
     }
   }
+
+  if (checking) return null;
 
   if (!cierre) {
     return (
@@ -225,14 +242,8 @@ export default function AdminCierreDetallePage() {
           <h2 style={title}>Totales</h2>
 
           <div style={totalsGrid}>
-            <Amount
-              label="Efectivo"
-              value={cierre.totalesPorMetodo.efectivo ?? 0}
-            />
-            <Amount
-              label="Tarjeta"
-              value={cierre.totalesPorMetodo.tarjeta ?? 0}
-            />
+            <Amount label="Efectivo" value={cierre.totalesPorMetodo.efectivo ?? 0} />
+            <Amount label="Tarjeta" value={cierre.totalesPorMetodo.tarjeta ?? 0} />
             <Amount
               label="Transferencia"
               value={cierre.totalesPorMetodo.transferencia ?? 0}
