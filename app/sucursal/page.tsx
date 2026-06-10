@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCortes, getCierres, sincronizarDesdeFirebase } from "../../lib/storage";
+import {
+  getCierres,
+  getCortes,
+  sincronizarDesdeFirebase,
+} from "../../lib/storage";
 
 type Role = "ADMIN" | "SUPERVISOR" | "SUCURSAL";
 
@@ -35,19 +39,39 @@ function formatDateLong(date = new Date()) {
 
 export default function SucursalPage() {
   const router = useRouter();
+
   const [session, setSession] = useState<Session | null>(null);
   const [cortesPendientes, setCortesPendientes] = useState(0);
   const [cierresSucursal, setCierresSucursal] = useState(0);
+  const [actualizando, setActualizando] = useState(false);
 
-  function calcularResumen(s: Session) {
-    const cortes = getCortes().filter(
-      (c) => c.sucursalId === s.sucursalId && c.status === "ABIERTO"
+  function calcularResumen(s: Session, data?: any) {
+    const cortesBase = data?.cortes || getCortes();
+    const cierresBase = data?.cierres || getCierres();
+
+    const cortes = cortesBase.filter(
+      (c: any) => c.sucursalId === s.sucursalId && c.status === "ABIERTO"
     );
 
-    const cierres = getCierres().filter((c) => c.sucursalId === s.sucursalId);
+    const cierres = cierresBase.filter(
+      (c: any) => c.sucursalId === s.sucursalId
+    );
 
     setCortesPendientes(cortes.length);
     setCierresSucursal(cierres.length);
+  }
+
+  async function cargarResumen(s: Session) {
+    try {
+      setActualizando(true);
+      const data = await sincronizarDesdeFirebase();
+      calcularResumen(s, data);
+    } catch (e) {
+      console.error(e);
+      calcularResumen(s);
+    } finally {
+      setActualizando(false);
+    }
   }
 
   useEffect(() => {
@@ -84,13 +108,7 @@ export default function SucursalPage() {
       }
 
       setSession(s);
-
-      sincronizarDesdeFirebase()
-        .then(() => calcularResumen(s))
-        .catch((e) => {
-          console.error(e);
-          calcularResumen(s);
-        });
+      cargarResumen(s);
     } catch (e) {
       console.error(e);
       cerrarSesion(router);
@@ -211,7 +229,7 @@ export default function SucursalPage() {
           <StatCard
             label="Cierres registrados"
             value={String(cierresSucursal)}
-            help="Historial de esta sucursal"
+            help={actualizando ? "Actualizando historial..." : "Historial de esta sucursal"}
           />
         </section>
 
