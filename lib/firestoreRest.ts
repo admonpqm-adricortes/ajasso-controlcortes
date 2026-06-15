@@ -19,9 +19,7 @@ function getDocIdFromName(name?: string) {
 
 function toFirestoreValue(value: any): any {
   if (value === null) return { nullValue: null };
-
   if (typeof value === "string") return { stringValue: value };
-
   if (typeof value === "boolean") return { booleanValue: value };
 
   if (typeof value === "number") {
@@ -101,6 +99,34 @@ export async function restSetDoc(collection: string, id: string, data: any) {
   if (!res.ok) {
     const error = await res.text();
     throw new Error(`Firebase no permitió guardar: ${error}`);
+  }
+}
+
+export async function restCreateDoc(collection: string, id: string, data: any) {
+  const token = getToken();
+
+  const res = await fetch(
+    `${BASE_URL}/${collection}/${id}?currentDocument.exists=false`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        fields: toFirestoreFields(data),
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const error = await res.text();
+
+    if (error.includes("ALREADY_EXISTS") || error.includes("already exists")) {
+      throw new Error("Ya existe un cierre para esta sucursal, fecha y turno.");
+    }
+
+    throw new Error(`Firebase no permitió crear: ${error}`);
   }
 }
 

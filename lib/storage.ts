@@ -8,6 +8,7 @@ import type {
 } from "./types";
 
 import {
+  restCreateDoc,
   restDeleteDoc,
   restGetCollection,
   restSetDoc,
@@ -41,7 +42,7 @@ function write<T>(key: string, value: T) {
       localStorage.removeItem(key);
     }
   }
-} 
+}
 
 function removeUndefinedDeep<T>(value: T): T {
   if (Array.isArray(value)) {
@@ -169,8 +170,8 @@ export async function eliminarCorte(params: {
   }
 
   const usadoEnCierre = getCierres().some((cierre) =>
-  (cierre.cortesIds || []).includes(params.corteId)
-);
+    (cierre.cortesIds || []).includes(params.corteId)
+  );
 
   if (usadoEnCierre) {
     throw new Error("No se puede eliminar: este corte ya pertenece a un cierre.");
@@ -187,7 +188,11 @@ export async function eliminarCorte(params: {
   const eliminados = getCortesEliminados();
   write(CORTES_ELIMINADOS_KEY, [eliminado, ...eliminados]);
 
-  await restSetDoc("cortes_eliminados", eliminado.id, removeUndefinedDeep(eliminado));
+  await restSetDoc(
+    "cortes_eliminados",
+    eliminado.id,
+    removeUndefinedDeep(eliminado)
+  );
 
   const updated = cortes.filter((c) => c.id !== params.corteId);
   write(CORTES_KEY, updated);
@@ -225,7 +230,11 @@ export async function restaurarCorteEliminado(params: {
   };
 
   write(CORTES_KEY, [corteRestaurado, ...cortes]);
-  await restSetDoc("cortes", corteRestaurado.id, removeUndefinedDeep(corteRestaurado));
+  await restSetDoc(
+    "cortes",
+    corteRestaurado.id,
+    removeUndefinedDeep(corteRestaurado)
+  );
 
   const restantes = eliminados.filter((x) => x.id !== params.eliminadoId);
   write(CORTES_ELIMINADOS_KEY, restantes);
@@ -246,12 +255,13 @@ export function getCierres(): CierreDia[] {
 }
 
 export async function saveCierre(cierre: CierreDia) {
+  const payload = removeUndefinedDeep(cierre);
+
+  await restCreateDoc("cierres", cierre.id, payload);
+
   const all = getCierres();
   all.unshift(cierre);
   write(CIERRES_KEY, all);
-
-  const payload = removeUndefinedDeep(cierre);
-  await restSetDoc("cierres", cierre.id, payload);
 }
 
 export function existeCierre(
@@ -451,8 +461,10 @@ export async function crearCierre(input: {
     }
   }
 
+  const cierreId = `${input.sucursalId}_${input.fecha}_${turno}`;
+
   const cierre: CierreDia = {
-    id: uid(),
+    id: cierreId,
     sucursalId: input.sucursalId,
     fecha: input.fecha,
     turno,
@@ -532,7 +544,7 @@ export async function sincronizarDesdeFirebase() {
         pdfDataUrl: undefined,
       }))
     );
-    
+
     write(
       CORTES_ELIMINADOS_KEY,
       cortesEliminados.map((x: any) => ({
