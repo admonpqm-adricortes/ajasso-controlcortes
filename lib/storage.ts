@@ -380,7 +380,12 @@ export async function crearCierre(input: {
     name: string;
     dataUrl: string;
   }[];
-  saldoSobranteAnterior?: number;
+  datosTerminal?: {
+    importeTerminal?: number;
+    afiliacion?: string;
+    observacionDiferencia?: string;
+  };
+  saldoSobranteAnterior?: number; 
 }) {
   const turno = input.turno || "GENERAL";
 
@@ -490,7 +495,15 @@ export async function crearCierre(input: {
       name: v.name,
       dataUrl: v.dataUrl,
     })),
-    revisado: false,
+    datosTerminal: input.datosTerminal
+      ? {
+          importeTerminal: Number(input.datosTerminal.importeTerminal || 0),
+          afiliacion: input.datosTerminal.afiliacion?.trim() || undefined,
+          observacionDiferencia:
+            input.datosTerminal.observacionDiferencia?.trim() || undefined,
+        }
+      : undefined,
+    revisado: false, 
     saldoSobranteAnterior,
     efectivoNetoRequerido,
     sobranteCorte,

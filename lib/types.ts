@@ -37,12 +37,9 @@ export type Corte = {
 
 export type CorteEliminado = {
   id: string;
-
   corte: Corte;
-
   eliminadoPor: string;
   eliminadoAt: string;
-
   motivo?: string;
 };
 
@@ -66,6 +63,12 @@ export type BolsaFinal = {
   totalCalculado?: number;
 };
 
+export type DatosTerminal = {
+  importeTerminal?: number;
+  afiliacion?: string;
+  observacionDiferencia?: string;
+};
+
 export type CierreDia = {
   id: string;
   sucursalId: string;
@@ -80,6 +83,8 @@ export type CierreDia = {
   observaciones?: string;
   createdAt: string;
   createdBy: string;
+
+  datosTerminal?: DatosTerminal;
 
   pdfName?: string;
   pdfDataUrl?: string;

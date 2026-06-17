@@ -16,10 +16,10 @@ import {
   totalDenominacionesMXN,
   totalMetodos,
   sincronizarDesdeFirebase,
-} from "@/lib/storage"; 
+} from "@/lib/storage";
 import { parseTotalesDesdePdfText } from "@/lib/corteParser";
 
-declare global { 
+declare global {
   interface Window {
     pdfjsLib?: any;
   }
@@ -202,6 +202,10 @@ export default function CierreSucursalPage() {
 
   const [voucherFiles, setVoucherFiles] = useState<File[]>([]);
   const [voucherPreviews, setVoucherPreviews] = useState<VoucherPreview[]>([]);
+
+  const [importeTerminal, setImporteTerminal] = useState(0);
+  const [afiliacionTerminal, setAfiliacionTerminal] = useState("");
+  const [observacionDiferencia, setObservacionDiferencia] = useState("");
 
   const [fechaYMD, setFechaYMD] = useState(() => {
     const d = new Date();
@@ -403,6 +407,8 @@ export default function CierreSucursalPage() {
 
   const totalEsperado = totalMetodos(totalesBase);
   const efectivoEsperado = Number(totalesBase.efectivo || 0);
+  const tarjetaPdfSistema = Number(totalesBase.tarjeta || 0);
+  const diferenciaTerminal = Number(importeTerminal || 0) - tarjetaPdfSistema;
 
   const efectivoNetoAEnviar = Math.max(
     0,
@@ -424,128 +430,163 @@ export default function CierreSucursalPage() {
 
   const requiereDenominaciones = efectivoNetoAEnviar > 0;
 
-useEffect(() => {
-  if (requiereDenominaciones && !capturarDenoms) {
-    setCapturarDenoms(true);
-  }
-}, [requiereDenominaciones, capturarDenoms]); 
+  useEffect(() => {
+    if (requiereDenominaciones && !capturarDenoms) {
+      setCapturarDenoms(true);
+    }
+  }, [requiereDenominaciones, capturarDenoms]);
 
-async function guardarCierre() {
-  try {
-    if (!sucursal) throw new Error("No hay sucursal asignada");
-    if (!session?.username) throw new Error("No hay sesión activa");
+  async function guardarCierre() {
+    try {
+      if (!sucursal) throw new Error("No hay sucursal asignada");
+      if (!session?.username) throw new Error("No hay sesión activa");
 
-    setGuardando(true);
+      setGuardando(true);
 
-    await sincronizarDesdeFirebase();
+      await sincronizarDesdeFirebase();
 
-    const cortesActualizados = getCortesPendientes(sucursal, fechaYMD, turno);
-    const hayCortesParaGuardar = cortesActualizados.length > 0;
-    const saldoAnteriorParaGuardar = getSaldoSobranteSucursal(sucursal);
+      const cortesActualizados = getCortesPendientes(sucursal, fechaYMD, turno);
+      const hayCortesParaGuardar = cortesActualizados.length > 0;
+      const saldoAnteriorParaGuardar = getSaldoSobranteSucursal(sucursal);
 
-    setCortesPendientes(cortesActualizados || []);
-    setSaldoSobranteAnterior(saldoAnteriorParaGuardar);
+      setCortesPendientes(cortesActualizados || []);
+      setSaldoSobranteAnterior(saldoAnteriorParaGuardar);
 
-    const totalesGuardar: MetodosPago = hayCortesParaGuardar
-      ? sumarCortes(cortesActualizados)
-      : {
-          efectivo: Number(totalesPdf.efectivo || 0),
-          tarjeta: Number(totalesPdf.tarjeta || 0),
-          transferencia: Number(totalesPdf.transferencia || 0),
-          vales: Number(totalesPdf.vales || 0),
-          otros: Number(totalesPdf.otros || 0),
-        };
+      const totalesGuardar: MetodosPago = hayCortesParaGuardar
+        ? sumarCortes(cortesActualizados)
+        : {
+            efectivo: Number(totalesPdf.efectivo || 0),
+            tarjeta: Number(totalesPdf.tarjeta || 0),
+            transferencia: Number(totalesPdf.transferencia || 0),
+            vales: Number(totalesPdf.vales || 0),
+            otros: Number(totalesPdf.otros || 0),
+          };
 
-    if (!hayCortesParaGuardar && !pdfFile) {
-      throw new Error(
-        "No hay cortes pendientes. Sube un PDF de respaldo para generar el cierre."
+      const tarjetaGuardar = Number(totalesGuardar.tarjeta || 0);
+      const importeTerminalGuardar = Number(importeTerminal || 0);
+      const diferenciaTerminalGuardar = importeTerminalGuardar - tarjetaGuardar;
+
+      if (!hayCortesParaGuardar && !pdfFile) {
+        throw new Error(
+          "No hay cortes pendientes. Sube un PDF de respaldo para generar el cierre."
+        );
+      }
+
+      if (tarjetaGuardar > 0 && voucherFiles.length === 0) {
+        throw new Error(
+          "Este cierre tiene tarjeta. Debes subir al menos una imagen de voucher antes de guardar."
+        );
+      }
+
+      if (tarjetaGuardar > 0) {
+        if (importeTerminalGuardar <= 0) {
+          throw new Error(
+            "Este cierre tiene tarjeta. Debes capturar el importe del cierre de terminal."
+          );
+        }
+
+        if (!afiliacionTerminal.trim()) {
+          throw new Error(
+            "Este cierre tiene tarjeta. Debes capturar el número de afiliación."
+          );
+        }
+
+        if (
+          Math.abs(diferenciaTerminalGuardar) > 0.009 &&
+          !observacionDiferencia.trim()
+        ) {
+          throw new Error(
+            "Existe diferencia entre tarjeta del sistema y terminal. Debes capturar observación de diferencia."
+          );
+        }
+      }
+
+      const bolsaFinalNum = Number(bolsaFinal || 0);
+      const efectivoEsperadoGuardar = Number(totalesGuardar.efectivo || 0);
+      const efectivoNetoGuardar = Math.max(
+        0,
+        efectivoEsperadoGuardar - saldoAnteriorParaGuardar
       );
-    }
 
-    if ((totalesGuardar.tarjeta || 0) > 0 && voucherFiles.length === 0) {
-      throw new Error(
-        "Este cierre tiene tarjeta. Debes subir al menos una imagen de voucher antes de guardar."
-      );
-    }
+      if (efectivoNetoGuardar > 0) {
+        if (!capturarDenoms) {
+          throw new Error(
+            "Este cierre tiene efectivo. Debes capturar denominaciones."
+          );
+        }
 
-    const bolsaFinalNum = Number(bolsaFinal || 0);
-    const efectivoEsperadoGuardar = Number(totalesGuardar.efectivo || 0);
-    const efectivoNetoGuardar = Math.max(
-      0,
-      efectivoEsperadoGuardar - saldoAnteriorParaGuardar
-    );
+        if (bolsaFinalNum <= 0) {
+          throw new Error(
+            "Este cierre tiene efectivo. Debes capturar la bolsa final física."
+          );
+        }
 
-    if (efectivoNetoGuardar > 0) {
-      if (!capturarDenoms) {
-        throw new Error(
-          "Este cierre tiene efectivo. Debes capturar denominaciones."
-        );
+        if (totalDenoms <= 0) {
+          throw new Error(
+            "Este cierre tiene efectivo. Debes capturar las denominaciones."
+          );
+        }
+
+        const TOLERANCIA = 1;
+
+        if (Math.abs(totalDenoms - bolsaFinalNum) > TOLERANCIA) {
+          throw new Error(
+            `Las denominaciones no cuadran con la bolsa final. Bolsa: ${money(
+              bolsaFinalNum
+            )}, denominaciones: ${money(totalDenoms)}`
+          );
+        }
       }
 
-      if (bolsaFinalNum <= 0) {
-        throw new Error(
-          "Este cierre tiene efectivo. Debes capturar la bolsa final física."
-        );
+      let pdfDataUrl: string | undefined;
+      if (pdfFile) {
+        pdfDataUrl = await fileToBase64(pdfFile);
       }
 
-      if (totalDenoms <= 0) {
-        throw new Error(
-          "Este cierre tiene efectivo. Debes capturar las denominaciones."
-        );
-      }
+      const vouchers =
+        voucherPreviews.length > 0
+          ? voucherPreviews.map((v) => ({
+              name: v.name,
+              dataUrl: v.dataUrl,
+            }))
+          : undefined;
 
-      const TOLERANCIA = 1;
+      await crearCierre({
+        sucursalId: sucursal,
+        fecha: fechaYMD,
+        turno,
+        bolsaFinal: bolsaFinalNum,
+        denominaciones: capturarDenoms ? denoms : undefined,
+        observaciones: hayCortesParaGuardar
+          ? `Cierre generado con ${cortesActualizados.length} corte(s) pendiente(s)`
+          : pdfName
+          ? `PDF de respaldo cargado: ${pdfName}`
+          : undefined,
+        createdBy: session.username,
+        pdfName: pdfFile?.name,
+        pdfDataUrl,
+        totalesPdf: hayCortesParaGuardar ? undefined : totalesGuardar,
+        vouchers,
+        datosTerminal:
+          tarjetaGuardar > 0
+            ? {
+                importeTerminal: importeTerminalGuardar,
+                afiliacion: afiliacionTerminal,
+                observacionDiferencia: observacionDiferencia,
+              }
+            : undefined,
+        saldoSobranteAnterior: saldoAnteriorParaGuardar,
+      });
 
-      if (Math.abs(totalDenoms - bolsaFinalNum) > TOLERANCIA) {
-        throw new Error(
-          `Las denominaciones no cuadran con la bolsa final. Bolsa: ${money(
-            bolsaFinalNum
-          )}, denominaciones: ${money(totalDenoms)}`
-        );
-      }
+      alert("Cierre guardado ✅");
+      router.push("/sucursal");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "No se pudo guardar el cierre");
+    } finally {
+      setGuardando(false);
     }
-
-    let pdfDataUrl: string | undefined;
-    if (pdfFile) {
-      pdfDataUrl = await fileToBase64(pdfFile);
-    }
-
-    const vouchers =
-      voucherPreviews.length > 0
-        ? voucherPreviews.map((v) => ({
-            name: v.name,
-            dataUrl: v.dataUrl,
-          }))
-        : undefined;
-
-    await crearCierre({
-      sucursalId: sucursal,
-      fecha: fechaYMD,
-      turno,
-      bolsaFinal: bolsaFinalNum,
-      denominaciones: capturarDenoms ? denoms : undefined,
-      observaciones: hayCortesParaGuardar
-        ? `Cierre generado con ${cortesActualizados.length} corte(s) pendiente(s)`
-        : pdfName
-        ? `PDF de respaldo cargado: ${pdfName}`
-        : undefined,
-      createdBy: session.username,
-      pdfName: pdfFile?.name,
-      pdfDataUrl,
-      totalesPdf: hayCortesParaGuardar ? undefined : totalesGuardar,
-      vouchers,
-      saldoSobranteAnterior: saldoAnteriorParaGuardar,
-    });
-
-    alert("Cierre guardado ✅");
-    router.push("/sucursal");
-  } catch (e: any) {
-    console.error(e);
-    alert(e?.message || "No se pudo guardar el cierre");
-  } finally {
-    setGuardando(false);
   }
-} 
 
   return (
     <main style={pageStyle}>
@@ -732,7 +773,7 @@ async function guardarCierre() {
 
           <div style={amountGrid}>
             <Amount label="Efectivo" value={totalesBase.efectivo ?? 0} />
-            <Amount label="Tarjeta" value={totalesBase.tarjeta ?? 0} />
+            <Amount label="Tarjeta sistema" value={totalesBase.tarjeta ?? 0} />
             <Amount
               label="Transferencia"
               value={totalesBase.transferencia ?? 0}
@@ -744,76 +785,102 @@ async function guardarCierre() {
         </section>
 
         <section style={card}>
-  <h2 style={title}>Vouchers terminal</h2>
+          <h2 style={title}>Vouchers terminal</h2>
 
-  <div style={{ marginBottom: 8, color: "#555" }}>
-    {(totalesBase.tarjeta || 0) > 0
-      ? "Este cierre tiene tarjeta. Debes subir al menos un voucher."
-      : "Este cierre no tiene tarjeta. Puedes dejarlo vacío."}
-  </div>
-
-  <input
-    type="file"
-    accept="image/*"
-    multiple
-    onChange={(e) => onPickVoucher(e.target.files)}
-  />
-
-  <div style={{ marginTop: 10 }}>
-    <b>Archivos seleccionados:</b>
-  </div>
-
-  {voucherPreviews.length === 0 ? (
-    <div style={{ color: "#64748b", marginTop: 6 }}>
-      No hay vouchers cargados
-    </div>
-  ) : (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-        gap: 12,
-        marginTop: 12,
-      }}
-    >
-      {voucherPreviews.map((v, idx) => (
-        <div
-          key={`${v.name}-${idx}`}
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: 14,
-            padding: 10,
-            background: "#fff",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 800,
-              marginBottom: 8,
-              color: "#312e81",
-              wordBreak: "break-word",
-            }}
-          >
-            {v.name}
+          <div style={{ marginBottom: 8, color: "#555" }}>
+            {(totalesBase.tarjeta || 0) > 0
+              ? "Este cierre tiene tarjeta. Debes subir al menos un voucher."
+              : "Este cierre no tiene tarjeta. Puedes dejarlo vacío."}
           </div>
 
-          <img
-            src={v.dataUrl}
-            alt={v.name}
-            style={{
-              width: "100%",
-              maxHeight: 220,
-              objectFit: "contain",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-            }}
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => onPickVoucher(e.target.files)}
           />
-        </div>
-      ))}
-    </div>
-  )}
-</section>
+
+          <div style={{ marginTop: 10 }}>
+            <b>Archivos seleccionados:</b>
+          </div>
+
+          {voucherPreviews.length === 0 ? (
+            <div style={{ color: "#64748b", marginTop: 6 }}>
+              No hay vouchers cargados
+            </div>
+          ) : (
+            <div style={voucherGrid}>
+              {voucherPreviews.map((v, idx) => (
+                <div key={`${v.name}-${idx}`} style={voucherCard}>
+                  <div style={voucherNameStyle}>{v.name}</div>
+
+                  <img
+                    src={v.dataUrl}
+                    alt={v.name}
+                    style={{
+                      width: "100%",
+                      maxHeight: 220,
+                      objectFit: "contain",
+                      borderRadius: 10,
+                      border: "1px solid #e5e7eb",
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section style={card}>
+          <h2 style={title}>Datos de terminal</h2>
+
+          <div style={grid2}>
+            <div>
+              <label style={label}>Importe del cierre de terminal</label>
+              <input
+                type="number"
+                value={importeTerminal}
+                onChange={(e) => setImporteTerminal(Number(e.target.value || 0))}
+                style={input}
+                placeholder="0.00"
+              />
+            </div>
+
+            <div>
+              <label style={label}>Número de afiliación</label>
+              <input
+                type="text"
+                value={afiliacionTerminal}
+                onChange={(e) => setAfiliacionTerminal(e.target.value)}
+                style={input}
+                placeholder="Captura afiliación"
+              />
+            </div>
+          </div>
+
+          <div style={{ ...amountGrid, marginTop: 14 }}>
+            <Amount label="Tarjeta sistema" value={tarjetaPdfSistema} />
+            <Amount label="Terminal" value={Number(importeTerminal || 0)} />
+            <Amount
+              label="Diferencia terminal vs sistema"
+              value={diferenciaTerminal}
+              danger={Math.abs(diferenciaTerminal) > 0.009}
+              strong
+            />
+          </div>
+
+          {Math.abs(diferenciaTerminal) > 0.009 ? (
+            <div style={{ marginTop: 14 }}>
+              <label style={label}>Observación de diferencia</label>
+              <textarea
+                value={observacionDiferencia}
+                onChange={(e) => setObservacionDiferencia(e.target.value)}
+                style={{ ...input, minHeight: 90, resize: "vertical" }}
+                placeholder="Ej. Vale Proquipuntos cobrado en terminal; en sistema sí se aplicó el vale."
+              />
+            </div>
+          ) : null}
+        </section>
 
         <section style={card}>
           <h2 style={title}>Bolsa final y efectivo</h2>
@@ -862,17 +929,17 @@ async function guardarCierre() {
           </div>
 
           <label style={{ display: "flex", gap: 8, marginTop: 16 }}>
-  <input
-    type="checkbox"
-    checked={capturarDenoms}
-    disabled={requiereDenominaciones}
-    onChange={(e) => setCapturarDenoms(e.target.checked)}
-  />
-  <b>
-    Capturar denominaciones{" "}
-    {requiereDenominaciones ? "(obligatorio por efectivo)" : ""}
-  </b>
-</label>
+            <input
+              type="checkbox"
+              checked={capturarDenoms}
+              disabled={requiereDenominaciones}
+              onChange={(e) => setCapturarDenoms(e.target.checked)}
+            />
+            <b>
+              Capturar denominaciones{" "}
+              {requiereDenominaciones ? "(obligatorio por efectivo)" : ""}
+            </b>
+          </label>
 
           {capturarDenoms ? (
             <div style={denomGrid}>
