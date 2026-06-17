@@ -14,8 +14,9 @@ import {
   getCortesPendientes,
   getSaldoSobranteSucursal,
   totalDenominacionesMXN,
+  totalMetodos,
   sincronizarDesdeFirebase,
-} from "@/lib/storage";
+} from "@/lib/storage"; 
 import { parseTotalesDesdePdfText } from "@/lib/corteParser";
 
 declare global { 
