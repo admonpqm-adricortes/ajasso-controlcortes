@@ -13,12 +13,12 @@ import {
   crearCierre,
   getCortesPendientes,
   getSaldoSobranteSucursal,
-  totalMetodos,
   totalDenominacionesMXN,
+  sincronizarDesdeFirebase,
 } from "@/lib/storage";
 import { parseTotalesDesdePdfText } from "@/lib/corteParser";
 
-declare global {
+declare global { 
   interface Window {
     pdfjsLib?: any;
   }
