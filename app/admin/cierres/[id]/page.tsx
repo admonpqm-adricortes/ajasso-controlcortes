@@ -82,7 +82,14 @@ export default function AdminCierreDetallePage() {
     const cierresActuales = data?.cierres || getCierres();
     const cortesActuales = data?.cortes || getCortes();
 
-    const found = cierresActuales.find((x) => x.id === id) ?? null;
+    const idRuta = Array.isArray(id) ? id[0] : id;
+    const idDecodificado = decodeURIComponent(String(idRuta || ""));
+    
+    const found =
+      cierresActuales.find((x: any) => {
+        const cierreId = String(x.id || "");
+        return cierreId === idRuta || cierreId === idDecodificado;
+      }) ?? null; 
     setCierre(found);
 
     if (found) {
@@ -682,4 +689,4 @@ const smallBtn: React.CSSProperties = {
   color: "#0f766e",
   fontWeight: 800,
   cursor: "pointer",
-};
+}; 
