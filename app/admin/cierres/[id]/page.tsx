@@ -274,6 +274,59 @@ export default function AdminCierreDetallePage() {
         </section>
 
         <section style={card}>
+  <h2 style={title}>Datos de terminal</h2>
+
+  <div style={totalsGrid}>
+    <Amount
+      label="Tarjeta sistema"
+      value={cierre.totalesPorMetodo.tarjeta ?? 0}
+    />
+
+    <Amount
+      label="Importe terminal"
+      value={cierre.datosTerminal?.importeTerminal ?? 0}
+      strong
+    />
+
+    <div style={amountBox}>
+      <div style={{ color: "#64748b", fontSize: 13 }}>
+        Número de afiliación
+      </div>
+      <div
+        style={{
+          fontWeight: 900,
+          fontSize: 18,
+          color: "#312e81",
+          marginTop: 4,
+        }}
+      >
+        {cierre.datosTerminal?.afiliacion || "—"}
+      </div>
+    </div>
+
+    <Amount
+      label="Diferencia terminal"
+      value={
+        Number(cierre.datosTerminal?.importeTerminal || 0) -
+        Number(cierre.totalesPorMetodo.tarjeta || 0)
+      }
+      danger={
+        Number(cierre.datosTerminal?.importeTerminal || 0) -
+          Number(cierre.totalesPorMetodo.tarjeta || 0) !==
+        0
+      }
+    />
+  </div>
+
+  {cierre.datosTerminal?.observacionDiferencia ? (
+    <div style={noteBox}>
+      <b>Observación terminal:</b>{" "}
+      {cierre.datosTerminal.observacionDiferencia}
+    </div>
+  ) : null}
+</section> 
+
+        <section style={card}>
           <h2 style={title}>Control de sobrantes</h2>
 
           <div style={totalsGrid}>
