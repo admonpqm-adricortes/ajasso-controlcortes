@@ -92,6 +92,13 @@ function extractDateYMD(value: any) {
   return "";
 }
 
+function fechaEnRango(fecha: string, inicio: string, fin: string) {
+  if (!fecha) return false;
+  if (inicio && fecha < inicio) return false;
+  if (fin && fecha > fin) return false;
+  return true;
+}
+
 function isDateToken(value: string) {
   return /(\d{2})\/(\d{2})\/(\d{4})/.test(value) || /(\d{4})-(\d{2})-(\d{2})/.test(value);
 }
@@ -324,8 +331,15 @@ function parseReporteEspecial(text: string): PreviewRow[] {
   });
 }
 
-function agruparInternos(cierres: CierreDia[], fecha: string): InternoRow[] {
-  const filtrados = cierres.filter((c) => c.fecha === fecha);
+function agruparInternos(
+  cierres: CierreDia[],
+  fechaInicio: string,
+  fechaFin: string
+): InternoRow[] {
+  const filtrados = cierres.filter((c) =>
+    fechaEnRango(c.fecha, fechaInicio, fechaFin)
+  );
+
   const agrupado = new Map<string, InternoRow>();
 
   for (const c of filtrados) {
@@ -334,7 +348,7 @@ function agruparInternos(cierres: CierreDia[], fecha: string): InternoRow[] {
 
     if (!agrupado.has(sucursal)) {
       agrupado.set(sucursal, {
-        fecha,
+        fecha: c.fecha,
         sucursal,
         efectivo: 0,
         tarjeta: 0,
@@ -363,7 +377,6 @@ function buildComparacion(internos: InternoRow[], externos: PreviewRow[]): Compa
   const keysInterno = Array.from(mapInterno.keys());
   const keysExterno = Array.from(mapExterno.keys());
   const sucursales = Array.from(new Set(keysInterno.concat(keysExterno))).sort();
-  
 
   return sucursales.map((key) => {
     const interno = mapInterno.get(key) || null;
@@ -378,7 +391,13 @@ function buildComparacion(internos: InternoRow[], externos: PreviewRow[]): Compa
     let estado = "Cuadra";
     if (interno && !externo) estado = "Solo en app";
     else if (!interno && externo) estado = "Solo en externo";
-    else if (diffEfectivo !== 0 || diffTarjeta !== 0 || diffTransferencia !== 0 || diffVales !== 0 || diffTotal !== 0) {
+    else if (
+      diffEfectivo !== 0 ||
+      diffTarjeta !== 0 ||
+      diffTransferencia !== 0 ||
+      diffVales !== 0 ||
+      diffTotal !== 0
+    ) {
       estado = "Con diferencia";
     }
 
@@ -409,7 +428,11 @@ function descargarExcelHTML(nombre: string, html: string) {
   URL.revokeObjectURL(url);
 }
 
-function exportarConciliacion(comparacion: ComparadoRow[], fecha: string) {
+function exportarConciliacion(
+  comparacion: ComparadoRow[],
+  fechaInicio: string,
+  fechaFin: string
+) {
   const rows = comparacion
     .map(
       (r) => `
@@ -445,7 +468,7 @@ function exportarConciliacion(comparacion: ComparadoRow[], fecha: string) {
           </th>
         </tr>
         <tr>
-          <td colspan="17"><b>Fecha:</b> ${fecha}</td>
+          <td colspan="17"><b>Rango:</b> ${fechaInicio} al ${fechaFin}</td>
         </tr>
         <tr style="background:#e5e7eb;font-weight:bold;">
           <td>Sucursal</td>
@@ -471,7 +494,10 @@ function exportarConciliacion(comparacion: ComparadoRow[], fecha: string) {
     </body>
   </html>`;
 
-  descargarExcelHTML(`conciliacion_externa_${fecha}.xls`, html);
+  descargarExcelHTML(
+    `conciliacion_externa_${fechaInicio}_a_${fechaFin}.xls`,
+    html
+  );
 }
 
 export default function AdminConciliacionPage() {
@@ -479,7 +505,8 @@ export default function AdminConciliacionPage() {
 
   const [checking, setChecking] = useState(true);
   const [session, setSession] = useState<Session>({});
-  const [fecha, setFecha] = useState<string>(() => toInputDate(new Date()));
+  const [fechaInicio, setFechaInicio] = useState<string>(() => toInputDate(new Date()));
+  const [fechaFin, setFechaFin] = useState<string>(() => toInputDate(new Date()));
   const [archivo, setArchivo] = useState<File | null>(null);
   const [archivoNombre, setArchivoNombre] = useState("");
   const [mensaje, setMensaje] = useState("Sube el reporte en CSV y da clic en Conciliar archivo.");
@@ -523,6 +550,11 @@ export default function AdminConciliacionPage() {
       return;
     }
 
+    if (fechaInicio && fechaFin && fechaInicio > fechaFin) {
+      setMensaje("La fecha inicial no puede ser mayor a la fecha final.");
+      return;
+    }
+
     try {
       setLoading(true);
       setMensaje("Leyendo archivo...");
@@ -536,14 +568,25 @@ export default function AdminConciliacionPage() {
         return;
       }
 
-      const fechasEncontradas = Array.from(new Set(parsed.map((r) => r.fecha).filter(Boolean))).sort();
-      const filtrados = fecha ? parsed.filter((r) => r.fecha === fecha) : parsed;
+      const fechasEncontradas = Array.from(
+        new Set(parsed.map((r) => r.fecha).filter(Boolean))
+      ).sort();
+
+      const filtrados = parsed.filter((r) =>
+        fechaEnRango(r.fecha, fechaInicio, fechaFin)
+      );
+
       setPreviewRows(filtrados);
 
       if (filtrados.length === 0) {
-        setMensaje(`Se leyó el archivo, pero no se encontraron movimientos para la fecha seleccionada. Fechas detectadas: ${fechasEncontradas.join(", ")}`);
+        setMensaje(
+          `Se leyó el archivo, pero no se encontraron movimientos para el rango seleccionado. Fechas detectadas: ${fechasEncontradas.join(", ")}`
+        );
       } else {
-        const sinMapeo = filtrados.filter((r) => r.sucursalMapeada.startsWith("SIN MAPEO")).length;
+        const sinMapeo = filtrados.filter((r) =>
+          r.sucursalMapeada.startsWith("SIN MAPEO")
+        ).length;
+
         setMensaje(
           sinMapeo > 0
             ? `Archivo leído. Se encontraron ${filtrados.length} registros agrupados. Hay ${sinMapeo} registros con PC sin mapear. Fechas detectadas: ${fechasEncontradas.join(", ")}`
@@ -566,7 +609,7 @@ export default function AdminConciliacionPage() {
     setMensaje("Sube el reporte en CSV y da clic en Conciliar archivo.");
   }
 
-  const externosDelDia = useMemo(() => {
+  const externosDelRango = useMemo(() => {
     return previewRows.filter(
       (r) =>
         !r.sucursalMapeada.startsWith("OTROS (") &&
@@ -575,19 +618,19 @@ export default function AdminConciliacionPage() {
   }, [previewRows]);
 
   const internosAgrupados = useMemo(() => {
-    return agruparInternos(cierresInternos, fecha);
-  }, [cierresInternos, fecha]);
+    return agruparInternos(cierresInternos, fechaInicio, fechaFin);
+  }, [cierresInternos, fechaInicio, fechaFin]);
 
   const comparacion = useMemo(() => {
-    return buildComparacion(internosAgrupados, externosDelDia);
-  }, [internosAgrupados, externosDelDia]);
+    return buildComparacion(internosAgrupados, externosDelRango);
+  }, [internosAgrupados, externosDelRango]);
 
   const comparacionVisible = useMemo(() => {
     return comparacion.filter((r) => !soloDiferencias || r.estado !== "Cuadra");
   }, [comparacion, soloDiferencias]);
 
   const resumenExterno = useMemo(() => {
-    return externosDelDia.reduce(
+    return externosDelRango.reduce(
       (acc, row) => {
         acc.efectivo += row.efectivo;
         acc.tarjeta += row.tarjeta;
@@ -598,7 +641,7 @@ export default function AdminConciliacionPage() {
       },
       { efectivo: 0, tarjeta: 0, transferencia: 0, vales: 0, total: 0 }
     );
-  }, [externosDelDia]);
+  }, [externosDelRango]);
 
   const resumenInterno = useMemo(() => {
     return internosAgrupados.reduce(
@@ -635,21 +678,41 @@ export default function AdminConciliacionPage() {
         <button onClick={() => router.push("/admin/cierres")} style={btn}>Ir a cierres</button>
       </div>
 
-      <h1 style={{ margin: 0 }}>Conciliación diaria</h1>
+      <h1 style={{ margin: 0 }}>Conciliación por rango</h1>
       <p style={{ marginTop: 6, color: "#666" }}>Sesión: {session.username || "AJASSO"}</p>
 
       <section style={{ ...card, marginTop: 18 }}>
         <div style={{ fontWeight: 900, marginBottom: 14 }}>Datos de conciliación</div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(260px, 1fr))", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(220px, 1fr))", gap: 14 }}>
           <div>
-            <label style={label}>Fecha a conciliar</label>
-            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} style={input} />
+            <label style={label}>Fecha inicial</label>
+            <input
+              type="date"
+              value={fechaInicio}
+              onChange={(e) => setFechaInicio(e.target.value)}
+              style={input}
+            />
+          </div>
+
+          <div>
+            <label style={label}>Fecha final</label>
+            <input
+              type="date"
+              value={fechaFin}
+              onChange={(e) => setFechaFin(e.target.value)}
+              style={input}
+            />
           </div>
 
           <div>
             <label style={label}>Reporte externo (CSV)</label>
-            <input type="file" accept=".csv,text/csv" onChange={(e) => onPickArchivo(e.target.files?.[0] || null)} style={input} />
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => onPickArchivo(e.target.files?.[0] || null)}
+              style={input}
+            />
           </div>
         </div>
 
@@ -672,7 +735,10 @@ export default function AdminConciliacionPage() {
             {soloDiferencias ? "Ver todo" : "Solo diferencias"}
           </button>
 
-          <button onClick={() => exportarConciliacion(comparacion, fecha)} style={btn}>
+          <button
+            onClick={() => exportarConciliacion(comparacion, fechaInicio, fechaFin)}
+            style={btn}
+          >
             Exportar conciliación
           </button>
         </div>
@@ -931,4 +997,5 @@ const tdMoneyStrong: React.CSSProperties = {
   whiteSpace: "nowrap",
   verticalAlign: "top",
   fontWeight: 900,
-};
+}; 
+
