@@ -637,7 +637,8 @@ export default function CierreSucursalPage() {
           );
         }
 
-        for (const [idx, t] of terminalesGuardar.entries()) {
+        for (let idx = 0; idx < terminalesGuardar.length; idx++) {
+          const t = terminalesGuardar[idx]; 
           if (t.importe <= 0) {
             throw new Error(
               `Terminal ${idx + 1}: debes capturar un importe mayor a cero.`
