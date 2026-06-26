@@ -63,7 +63,19 @@ export type BolsaFinal = {
   totalCalculado?: number;
 };
 
+export type TerminalCierre = {
+  id: string;
+  importe: number;
+  afiliacion: string;
+  observacion?: string;
+};
+
 export type DatosTerminal = {
+  terminales?: TerminalCierre[];
+  totalTerminal?: number;
+  diferenciaTerminal?: number;
+
+  // Compatibilidad con cierres anteriores
   importeTerminal?: number;
   afiliacion?: string;
   observacionDiferencia?: string;

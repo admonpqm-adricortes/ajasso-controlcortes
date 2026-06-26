@@ -31,6 +31,75 @@ const PDFJS_WORKER = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERS
 
 const SUCURSAL_DOBLE_CIERRE = "M-MEDICA CAMPESTRE";
 
+const AFILIACIONES_TERMINAL: Record<string, string[]> = {
+  "A-ALUD": ["3224730"],
+  "ALUD": ["3224730"],
+  "B-BANCO DE SANGRE": ["7878255"],
+  "BANCO DE SANGRE": ["7878255"],
+  "D-TORRE II": ["7285898"],
+  "D-TORRE DOS": ["7285898"],
+  "TORRE DOS": ["7285898"],
+  "E-ESCOBEDO": ["7877697"],
+  "ESCOBEDO": ["7877697"],
+  "F-HEROES DE LEON": ["9113801"],
+  "HEROES DE LEON": ["9113801"],
+  "G-PONCIANO": ["7569650"],
+  "PONCIANO": ["7569650"],
+  "H-BRISAS": ["8004835"],
+  "BRISAS": ["8004835"],
+  "I-ARBIDE": ["8204184"],
+  "ARBIDE": ["8204184"],
+  "J-LAGOS": ["8143887"],
+  "LAGOS": ["8143887"],
+  "K-SALUD OCUPACIONAL": ["8162869"],
+  "SALUD OCUPACIONAL": ["8162869"],
+  "L-CENTRO": ["3224748"],
+  "CENTRO": ["3224748"],
+  "M-MEDICA CAMPESTRE": ["8162869"],
+  "MEDICA CAMPESTRE": ["8162869"],
+  "N-DRIVE": ["7285898"],
+  "DRIVE": ["7285898"],
+  "O-MAYORAZGO": ["9742970"],
+  "MAYORAZGO": ["9742970"],
+  "P-PUNTA DEL ESTE": ["8511969"],
+  "PUNTA DEL ESTE": ["8511969"],
+  "Q-CMQ": ["7878280"],
+  "CMQ": ["7878280"],
+  "R-ROMITA": ["7569644"],
+  "ROMITA": ["7569644"],
+  "S-SILAO": ["7569602"],
+  "SILAO": ["7569602"],
+  "T-TOMA A DOM": ["7285898"],
+  "TOMA A DOM": ["7285898"],
+  "U-JUAREZ": ["7569660"],
+  "JUAREZ": ["7569660"],
+  "V-SAN FCO": ["8653930"],
+  "SAN FCO": ["8653930"],
+  "SAN FRANCISCO": ["8653930"],
+  "W-IRAPUATO": ["8205058"],
+  "IRAPUATO": ["8205058"],
+  "2C-EL CARMEN": ["7523914"],
+  "EL CARMEN": ["7523914"],
+  "Y-SANTA FE": ["9421034"],
+  "SANTA FE": ["9421034"],
+  "Z-AZTECA": ["7569594"],
+  "AZTECA": ["7569594"],
+};
+
+function normalizarTexto(value?: string) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+function getAfiliacionesSucursal(sucursalId?: string) {
+  const key = normalizarTexto(sucursalId);
+  return AFILIACIONES_TERMINAL[key] || [];
+}
+
 function requiereTurno(sucursalId?: string) {
   return sucursalId === SUCURSAL_DOBLE_CIERRE;
 }
@@ -40,6 +109,10 @@ function money(n: number) {
     style: "currency",
     currency: "MXN",
   });
+}
+
+function nuevoIdTerminal() {
+  return `terminal_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 }
 
 type TotalesPDF = {
@@ -60,6 +133,13 @@ type Session = {
 type VoucherPreview = {
   name: string;
   dataUrl: string;
+};
+
+type TerminalCaptura = {
+  id: string;
+  importe: number;
+  afiliacion: string;
+  observacion: string;
 };
 
 async function ensurePdfJs() {
@@ -203,9 +283,7 @@ export default function CierreSucursalPage() {
   const [voucherFiles, setVoucherFiles] = useState<File[]>([]);
   const [voucherPreviews, setVoucherPreviews] = useState<VoucherPreview[]>([]);
 
-  const [importeTerminal, setImporteTerminal] = useState(0);
-  const [afiliacionTerminal, setAfiliacionTerminal] = useState("");
-  const [observacionDiferencia, setObservacionDiferencia] = useState("");
+  const [terminales, setTerminales] = useState<TerminalCaptura[]>([]);
 
   const [fechaYMD, setFechaYMD] = useState(() => {
     const d = new Date();
@@ -247,6 +325,13 @@ export default function CierreSucursalPage() {
     m1: 0,
     m050: 0,
   });
+
+  const afiliacionesDisponibles = useMemo(
+    () => getAfiliacionesSucursal(sucursal),
+    [sucursal]
+  );
+
+  const afiliacionPrincipal = afiliacionesDisponibles[0] || "";
 
   useEffect(() => {
     try {
@@ -292,6 +377,28 @@ export default function CierreSucursalPage() {
       router.replace("/acceso");
     }
   }, [router]);
+
+  useEffect(() => {
+    if (!sucursal) return;
+
+    setTerminales((prev) => {
+      if (prev.length > 0) {
+        return prev.map((t) => ({
+          ...t,
+          afiliacion: t.afiliacion || afiliacionPrincipal,
+        }));
+      }
+
+      return [
+        {
+          id: nuevoIdTerminal(),
+          importe: 0,
+          afiliacion: afiliacionPrincipal,
+          observacion: "",
+        },
+      ];
+    });
+  }, [sucursal, afiliacionPrincipal]);
 
   async function recargar() {
     try {
@@ -388,6 +495,34 @@ export default function CierreSucursalPage() {
     }
   }
 
+  function agregarTerminal() {
+    setTerminales((prev) => [
+      ...prev,
+      {
+        id: nuevoIdTerminal(),
+        importe: 0,
+        afiliacion: afiliacionPrincipal,
+        observacion: "",
+      },
+    ]);
+  }
+
+  function eliminarTerminal(id: string) {
+    setTerminales((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((t) => t.id !== id);
+    });
+  }
+
+  function actualizarTerminal(
+    id: string,
+    patch: Partial<Omit<TerminalCaptura, "id">>
+  ) {
+    setTerminales((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
+    );
+  }
+
   const hayCortesPendientes = cortesPendientes.length > 0;
 
   const totalesCortes = useMemo(
@@ -408,7 +543,11 @@ export default function CierreSucursalPage() {
   const totalEsperado = totalMetodos(totalesBase);
   const efectivoEsperado = Number(totalesBase.efectivo || 0);
   const tarjetaPdfSistema = Number(totalesBase.tarjeta || 0);
-  const diferenciaTerminal = Number(importeTerminal || 0) - tarjetaPdfSistema;
+  const totalTerminales = useMemo(
+    () => terminales.reduce((acc, t) => acc + Number(t.importe || 0), 0),
+    [terminales]
+  );
+  const diferenciaTerminal = totalTerminales - tarjetaPdfSistema;
 
   const efectivoNetoAEnviar = Math.max(
     0,
@@ -463,8 +602,21 @@ export default function CierreSucursalPage() {
           };
 
       const tarjetaGuardar = Number(totalesGuardar.tarjeta || 0);
-      const importeTerminalGuardar = Number(importeTerminal || 0);
-      const diferenciaTerminalGuardar = importeTerminalGuardar - tarjetaGuardar;
+      const terminalesGuardar = terminales
+        .map((t) => ({
+          id: t.id,
+          importe: Number(t.importe || 0),
+          afiliacion: String(t.afiliacion || "").trim(),
+          observacion: String(t.observacion || "").trim(),
+        }))
+        .filter((t) => t.importe > 0 || t.afiliacion || t.observacion);
+
+      const totalTerminalGuardar = terminalesGuardar.reduce(
+        (acc, t) => acc + Number(t.importe || 0),
+        0
+      );
+
+      const diferenciaTerminalGuardar = totalTerminalGuardar - tarjetaGuardar;
 
       if (!hayCortesParaGuardar && !pdfFile) {
         throw new Error(
@@ -479,24 +631,36 @@ export default function CierreSucursalPage() {
       }
 
       if (tarjetaGuardar > 0) {
-        if (importeTerminalGuardar <= 0) {
+        if (terminalesGuardar.length === 0) {
           throw new Error(
-            "Este cierre tiene tarjeta. Debes capturar el importe del cierre de terminal."
+            "Este cierre tiene tarjeta. Debes capturar al menos un cierre de terminal."
           );
         }
 
-        if (!afiliacionTerminal.trim()) {
-          throw new Error(
-            "Este cierre tiene tarjeta. Debes capturar el número de afiliación."
-          );
+        for (const [idx, t] of terminalesGuardar.entries()) {
+          if (t.importe <= 0) {
+            throw new Error(
+              `Terminal ${idx + 1}: debes capturar un importe mayor a cero.`
+            );
+          }
+
+          if (!t.afiliacion) {
+            throw new Error(
+              `Terminal ${idx + 1}: debes capturar el número de afiliación.`
+            );
+          }
         }
+
+        const tieneObservacionTerminal = terminalesGuardar.some((t) =>
+          t.observacion.trim()
+        );
 
         if (
           Math.abs(diferenciaTerminalGuardar) > 0.009 &&
-          !observacionDiferencia.trim()
+          !tieneObservacionTerminal
         ) {
           throw new Error(
-            "Existe diferencia entre tarjeta del sistema y terminal. Debes capturar observación de diferencia."
+            "Existe diferencia entre tarjeta del sistema y terminales. Debes capturar observación en al menos una terminal."
           );
         }
       }
@@ -570,9 +734,21 @@ export default function CierreSucursalPage() {
         datosTerminal:
           tarjetaGuardar > 0
             ? {
-                importeTerminal: importeTerminalGuardar,
-                afiliacion: afiliacionTerminal,
-                observacionDiferencia: observacionDiferencia,
+                terminales: terminalesGuardar,
+                totalTerminal: totalTerminalGuardar,
+                diferenciaTerminal: diferenciaTerminalGuardar,
+
+                // Compatibilidad con cierres anteriores
+                importeTerminal: totalTerminalGuardar,
+                afiliacion: terminalesGuardar[0]?.afiliacion || "",
+                observacionDiferencia: terminalesGuardar
+                  .map((t, idx) =>
+                    t.observacion
+                      ? `Terminal ${idx + 1}: ${t.observacion}`
+                      : ""
+                  )
+                  .filter(Boolean)
+                  .join(" | "),
               }
             : undefined,
         saldoSobranteAnterior: saldoAnteriorParaGuardar,
@@ -832,35 +1008,113 @@ export default function CierreSucursalPage() {
         </section>
 
         <section style={card}>
-          <h2 style={title}>Datos de terminal</h2>
+          <h2 style={title}>Cierres de terminal</h2>
 
-          <div style={grid2}>
-            <div>
-              <label style={label}>Importe del cierre de terminal</label>
-              <input
-                type="number"
-                value={importeTerminal}
-                onChange={(e) => setImporteTerminal(Number(e.target.value || 0))}
-                style={input}
-                placeholder="0.00"
-              />
-            </div>
-
-            <div>
-              <label style={label}>Número de afiliación</label>
-              <input
-                type="text"
-                value={afiliacionTerminal}
-                onChange={(e) => setAfiliacionTerminal(e.target.value)}
-                style={input}
-                placeholder="Captura afiliación"
-              />
-            </div>
+          <div style={{ marginBottom: 10, color: "#555" }}>
+            Captura uno o varios cierres de terminal. La aplicación sumará los
+            importes y los comparará contra el total de tarjeta del sistema.
           </div>
+
+          <div style={{ display: "grid", gap: 12 }}>
+            {terminales.map((terminal, idx) => (
+              <div key={terminal.id} style={terminalCard}>
+                <div style={terminalHeader}>
+                  <b>Terminal {idx + 1}</b>
+
+                  <button
+                    type="button"
+                    onClick={() => eliminarTerminal(terminal.id)}
+                    disabled={terminales.length <= 1}
+                    style={{
+                      ...deleteTerminalBtn,
+                      opacity: terminales.length <= 1 ? 0.45 : 1,
+                      cursor: terminales.length <= 1 ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+
+                <div style={grid3}>
+                  <div>
+                    <label style={label}>Importe terminal</label>
+                    <input
+                      type="number"
+                      value={terminal.importe}
+                      onChange={(e) =>
+                        actualizarTerminal(terminal.id, {
+                          importe: Number(e.target.value || 0),
+                        })
+                      }
+                      style={input}
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={label}>Afiliación</label>
+                    {afiliacionesDisponibles.length > 1 ? (
+                      <select
+                        value={terminal.afiliacion}
+                        onChange={(e) =>
+                          actualizarTerminal(terminal.id, {
+                            afiliacion: e.target.value,
+                          })
+                        }
+                        style={input}
+                      >
+                        <option value="">Selecciona afiliación</option>
+                        {afiliacionesDisponibles.map((a) => (
+                          <option key={a} value={a}>
+                            {a}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={terminal.afiliacion}
+                        onChange={(e) =>
+                          actualizarTerminal(terminal.id, {
+                            afiliacion: e.target.value,
+                          })
+                        }
+                        style={input}
+                        placeholder="Captura afiliación"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={label}>Observación</label>
+                    <input
+                      type="text"
+                      value={terminal.observacion}
+                      onChange={(e) =>
+                        actualizarTerminal(terminal.id, {
+                          observacion: e.target.value,
+                        })
+                      }
+                      style={input}
+                      placeholder="Opcional"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={agregarTerminal}
+            style={{ ...backBtn, marginTop: 12 }}
+          >
+            + Agregar terminal
+          </button>
 
           <div style={{ ...amountGrid, marginTop: 14 }}>
             <Amount label="Tarjeta sistema" value={tarjetaPdfSistema} />
-            <Amount label="Terminal" value={Number(importeTerminal || 0)} />
+            <Amount label="Total terminales" value={totalTerminales} strong />
             <Amount
               label="Diferencia terminal vs sistema"
               value={diferenciaTerminal}
@@ -870,14 +1124,10 @@ export default function CierreSucursalPage() {
           </div>
 
           {Math.abs(diferenciaTerminal) > 0.009 ? (
-            <div style={{ marginTop: 14 }}>
-              <label style={label}>Observación de diferencia</label>
-              <textarea
-                value={observacionDiferencia}
-                onChange={(e) => setObservacionDiferencia(e.target.value)}
-                style={{ ...input, minHeight: 90, resize: "vertical" }}
-                placeholder="Ej. Vale Proquipuntos cobrado en terminal; en sistema sí se aplicó el vale."
-              />
+            <div style={warningBoxSmall}>
+              Existe diferencia entre el total de tarjetas del sistema y el
+              total capturado de terminales. Debes agregar observación en al
+              menos una terminal antes de guardar.
             </div>
           ) : null}
         </section>
@@ -1137,6 +1387,12 @@ const grid2: React.CSSProperties = {
   gap: 12,
 };
 
+const grid3: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: 12,
+};
+
 const summaryGrid: React.CSSProperties = {
   marginTop: 16,
   display: "grid",
@@ -1177,6 +1433,31 @@ const voucherNameStyle: React.CSSProperties = {
   marginBottom: 8,
   color: "#475569",
   wordBreak: "break-word",
+};
+
+const terminalCard: React.CSSProperties = {
+  border: "1px solid #ccfbf1",
+  borderRadius: 16,
+  background: "#f8fafc",
+  padding: 14,
+};
+
+const terminalHeader: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  marginBottom: 12,
+  color: "#312e81",
+};
+
+const deleteTerminalBtn: React.CSSProperties = {
+  padding: "7px 10px",
+  borderRadius: 10,
+  border: "1px solid #fecaca",
+  background: "#fff1f2",
+  color: "#991b1b",
+  fontWeight: 900,
 };
 
 const label: React.CSSProperties = {
@@ -1275,6 +1556,16 @@ const warningBox: React.CSSProperties = {
   fontWeight: 800,
 };
 
+const warningBoxSmall: React.CSSProperties = {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 14,
+  background: "#fff7ed",
+  border: "1px solid #fed7aa",
+  color: "#9a3412",
+  fontWeight: 800,
+};
+
 const errorBox: React.CSSProperties = {
   marginTop: 12,
   background: "#fff1f2",
@@ -1307,4 +1598,5 @@ const smallBtn: React.CSSProperties = {
   color: "#0f766e",
   fontWeight: 800,
   cursor: "pointer",
-}; 
+};
+

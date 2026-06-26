@@ -381,11 +381,19 @@ export async function crearCierre(input: {
     dataUrl: string;
   }[];
   datosTerminal?: {
+    terminales?: {
+      id: string;
+      importe: number;
+      afiliacion: string;
+      observacion?: string;
+    }[];
+    totalTerminal?: number;
+    diferenciaTerminal?: number;
     importeTerminal?: number;
     afiliacion?: string;
     observacionDiferencia?: string;
   };
-  saldoSobranteAnterior?: number; 
+  saldoSobranteAnterior?: number;
 }) {
   const turno = input.turno || "GENERAL";
 
@@ -497,13 +505,21 @@ export async function crearCierre(input: {
     })),
     datosTerminal: input.datosTerminal
       ? {
+          terminales: input.datosTerminal.terminales?.map((t) => ({
+            id: t.id,
+            importe: Number(t.importe || 0),
+            afiliacion: String(t.afiliacion || "").trim(),
+            observacion: t.observacion?.trim() || undefined,
+          })),
+          totalTerminal: Number(input.datosTerminal.totalTerminal || 0),
+          diferenciaTerminal: Number(input.datosTerminal.diferenciaTerminal || 0),
           importeTerminal: Number(input.datosTerminal.importeTerminal || 0),
           afiliacion: input.datosTerminal.afiliacion?.trim() || undefined,
           observacionDiferencia:
             input.datosTerminal.observacionDiferencia?.trim() || undefined,
         }
       : undefined,
-    revisado: false, 
+    revisado: false,
     saldoSobranteAnterior,
     efectivoNetoRequerido,
     sobranteCorte,
