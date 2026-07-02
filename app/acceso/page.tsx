@@ -71,6 +71,38 @@ function configFromEmail(email: string): {
     };
   } 
 
+  if (e === "sucursal.brisas@proquimed.com.mx") {
+    return {
+      username: "BRISAS",
+      role: "SUCURSAL",
+      sucursalId: "H-BRISAS",
+    };
+  }
+  
+  if (e === "sucursal.arbide@proquimed.com.mx") {
+    return {
+      username: "ARBIDE",
+      role: "SUCURSAL",
+      sucursalId: "I-ARBIDE",
+    };
+  }
+  
+  if (e === "sucursal.centro@proquimed.com.mx") {
+    return {
+      username: "CENTRO",
+      role: "SUCURSAL",
+      sucursalId: "L-CENTRO",
+    };
+  }
+  
+  if (e === "sucursal.romita@proquimed.com.mx") {
+    return {
+      username: "ROMITA",
+      role: "SUCURSAL",
+      sucursalId: "R-ROMITA",
+    };
+  } 
+
   throw new Error("Usuario sin rol asignado");
 }
 
